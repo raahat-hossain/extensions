@@ -1,0 +1,1 @@
+{"catalogVersion":2,"generatedAt":"2026-09-06T14:26:51.234Z","listName":"Dev Extensions","sources":[{"id":"en.static-demo","name":"Static Demo","version":1,"website":"https://example.org","languages":["en"],"rating":0,"path":"static-demo","variantId":"en.static-demo","sourceId":"static-demo","environment":"jsc"}]}

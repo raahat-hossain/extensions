@@ -1,5 +1,4 @@
 node_modules/
-dist/
 __temp__/
 *.log
 .DS_Store

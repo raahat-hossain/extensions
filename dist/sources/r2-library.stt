@@ -4041,7 +4041,7 @@ var SourcePackage = (() => {
       __publicField(Target, "info", {
         id: "en.r2-library",
         name: "R2 Library",
-        version: 1,
+        version: 1.1,
         website: "https://developers.cloudflare.com/r2/",
         languages: ["en"],
         rating: types_1.ContentRating.EVERYONE
@@ -4058,7 +4058,7 @@ var SourcePackage = (() => {
       var runtime = require_runtime();
       var sourceModule = require_r2_library();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1, "website": "https://developers.cloudflare.com/r2/", "languages": ["en"], "rating": 0 };
+      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.1, "website": "https://developers.cloudflare.com/r2/", "languages": ["en"], "rating": 0 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

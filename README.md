@@ -2,36 +2,57 @@
 
 Dev catalog for [Suwatte](https://suwatte.mantton.com/developers/introduction/) source plugins.
 
-## Static Demo (`en.static-demo`)
+## Sources
 
-Minimal end-to-end source with **two static titles**, **one chapter each**, **two pages each**, and rich metadata filled in (summary, credits, genres, properties, characters, links, endpoints, stats, artworks, etc.).
+### Static Demo (`en.static-demo`)
 
-| ID | Title | Type | Status | Pages |
-| --- | --- | --- | --- | --- |
-| `static-signal` | The Static Signal | Manga (RTL) | Completed | 2 |
-| `harbor-lights` | Harbor Lights | Manhwa (vertical) | Ongoing | 2 |
+Two fixture titles (1 chapter / 2 pages each) with rich metadata. Good for verifying the toolchain path.
 
-Also wires homepage feeds, custom feeds, sort options, and search filters so the toolchain/app path is exercised beyond bare search → content → chapters.
+### R2 Library (`en.r2-library`)
+
+Reads a private Cloudflare R2 bucket.
+
+Layout:
+
+```text
+manga/<title-id>/
+  details.json          # optional metadata
+  cover.webp            # optional if details.cover is set
+  chapter 1.cbz
+  chapter 4.cbz
+```
+
+**Cover resolution**
+
+1. `cover.*` file in the folder
+2. `details.cover` absolute `http(s)` URL
+3. `details.cover` chapter-page ref: `"[chapter name]_[page name]"`
+
+Example:
+
+```json
+"cover": "chapter 4_24.png"
+```
+
+→ page `24.png` inside `chapter 4.cbz` (also matches `004 - chapter 4.cbz`).
+
+Full field list: [`examples/r2-layout/manga/the-static-signal/details.json`](examples/r2-layout/manga/the-static-signal/details.json)
+
+Configure credentials in Suwatte → source settings (Account ID, Access Key, Secret, Bucket, optional endpoint/prefix).
 
 ## Setup
 
 ```sh
 npm install
 npm run build
+npm run test:r2
+npm run smoke
 ```
 
-## Device test
+## Install in Suwatte
 
 ```sh
 npm run serve
 ```
 
-Then in Suwatte: **Settings → Sources → Manage Sources** → add the printed LAN URL → install **Static Demo**.
-
-## Local smoke
-
-```sh
-npm run smoke
-```
-
-Runs the source through `@suwatte/toolchain/emulator` without the app.
+Or use the published list URL from this branch's `dist/`.

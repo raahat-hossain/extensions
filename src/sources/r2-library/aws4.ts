@@ -55,9 +55,7 @@ const signingKey = (
   return hmacSha256(kService, "aws4_request");
 };
 
-const parseHttpUrl = (
-  value: string,
-): { origin: string; host: string } => {
+const parseHttpUrl = (value: string): { origin: string; host: string } => {
   const match = value
     .trim()
     .replace(/\/+$/, "")
@@ -65,11 +63,9 @@ const parseHttpUrl = (
   if (!match) {
     throw new Error(`Invalid endpoint URL: ${value}`);
   }
-  const protocol = match[1]!.toLowerCase();
-  const host = match[2]!;
   return {
-    origin: `${protocol}://${host}`,
-    host,
+    origin: `${match[1]!.toLowerCase()}://${match[2]!}`,
+    host: match[2]!,
   };
 };
 

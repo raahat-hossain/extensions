@@ -13,10 +13,17 @@ export type ListResult = {
   objects: R2Object[];
 };
 
-const client = new HttpClient({
-  timeout: 60_000,
-  validateStatus: () => true,
-});
+let client: InstanceType<typeof HttpClient> | undefined;
+
+const http = (): InstanceType<typeof HttpClient> => {
+  if (!client) {
+    client = new HttpClient({
+      timeout: 60_000,
+      validateStatus: () => true,
+    });
+  }
+  return client;
+};
 
 const decodeXml = (value: string): string =>
   value
@@ -28,7 +35,7 @@ const decodeXml = (value: string): string =>
 
 const xmlValues = (xml: string, tag: string): string[] => {
   const values: string[] = [];
-  const pattern = new RegExp(`<${tag}>([^<]*)</${tag}>`, "g");
+  const pattern = new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>`, "g");
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(xml))) {
     values.push(decodeXml(match[1] ?? ""));
@@ -39,49 +46,30 @@ const xmlValues = (xml: string, tag: string): string[] => {
 const firstXml = (xml: string, tag: string): string | undefined =>
   xmlValues(xml, tag)[0];
 
-const listPage = async (
-  config: R2Config,
-  prefix: string,
-  options: { delimiter?: string; continuationToken?: string } = {},
-): Promise<ListResult & { continuationToken?: string }> => {
-  const query: Record<string, string> = {
-    "list-type": "2",
-    prefix,
-  };
-  if (options.delimiter) query.delimiter = options.delimiter;
-  if (options.continuationToken) {
-    query["continuation-token"] = options.continuationToken;
+const assertListXml = (xml: string, status: number): void => {
+  if (/<Error[\s>]/i.test(xml)) {
+    const code = firstXml(xml, "Code") ?? "Unknown";
+    const message = firstXml(xml, "Message") ?? xml.slice(0, 240);
+    throw new Error(`R2 list error (${status}) ${code}: ${message}`);
   }
 
-  const signed = signRequest({
-    method: "GET",
-    endpoint: config.endpoint,
-    bucket: config.bucket,
-    accessKeyId: config.accessKeyId,
-    secretAccessKey: config.secretAccessKey,
-    query,
-  });
-
-  const response = await client.request({
-    url: signed.url,
-    method: signed.method,
-    headers: signed.headers,
-  });
-
-  if (!response.ok) {
+  if (!/<ListBucketResult[\s>]/i.test(xml)) {
     throw new Error(
-      `R2 list failed (${response.status}): ${(await response.text()).slice(0, 240)}`,
+      `Unexpected R2 list response (${status}): ${xml.slice(0, 240)}`,
     );
   }
+};
 
-  const xml = await response.text();
+const parseListXml = (
+  xml: string,
+): ListResult & { continuationToken?: string } => {
   const commonBlocks =
-    xml.match(/<CommonPrefixes>[\s\S]*?<\/CommonPrefixes>/g) ?? [];
+    xml.match(/<CommonPrefixes>[\s\S]*?<\/CommonPrefixes>/gi) ?? [];
   const prefixes = commonBlocks
     .map((block) => firstXml(block, "Prefix"))
     .filter((value): value is string => !!value);
 
-  const contentBlocks = xml.match(/<Contents>[\s\S]*?<\/Contents>/g) ?? [];
+  const contentBlocks = xml.match(/<Contents>[\s\S]*?<\/Contents>/gi) ?? [];
   const objects: R2Object[] = [];
   for (const block of contentBlocks) {
     const key = firstXml(block, "Key");
@@ -97,10 +85,58 @@ const listPage = async (
     prefixes,
     objects,
     continuationToken:
-      firstXml(xml, "IsTruncated") === "true"
+      firstXml(xml, "IsTruncated")?.toLowerCase() === "true"
         ? firstXml(xml, "NextContinuationToken")
         : undefined,
   };
+};
+
+const signedGet = (
+  config: R2Config,
+  options: { key?: string; query?: Record<string, string> },
+) =>
+  signRequest({
+    method: "GET",
+    endpoint: config.endpoint,
+    bucket: config.bucket,
+    key: options.key,
+    accessKeyId: config.accessKeyId,
+    secretAccessKey: config.secretAccessKey,
+    query: options.query,
+    expiresSeconds: 60 * 15,
+  });
+
+const listPage = async (
+  config: R2Config,
+  prefix: string,
+  options: { delimiter?: string; continuationToken?: string } = {},
+): Promise<ListResult & { continuationToken?: string }> => {
+  const query: Record<string, string> = {
+    "list-type": "2",
+    "max-keys": "1000",
+    prefix,
+  };
+  if (options.delimiter) query.delimiter = options.delimiter;
+  if (options.continuationToken) {
+    query["continuation-token"] = options.continuationToken;
+  }
+
+  const signed = signedGet(config, { query });
+  const response = await http().request({
+    url: signed.url,
+    method: "GET",
+  });
+
+  const xml = await response.text();
+  assertListXml(xml, response.status);
+
+  if (!response.ok) {
+    throw new Error(
+      `R2 list failed (${response.status}): ${xml.slice(0, 240)}`,
+    );
+  }
+
+  return parseListXml(xml);
 };
 
 export const listAll = async (
@@ -126,24 +162,21 @@ export const getObjectBytes = async (
   config: R2Config,
   key: string,
 ): Promise<Uint8Array> => {
-  const signed = signRequest({
-    method: "GET",
-    endpoint: config.endpoint,
-    bucket: config.bucket,
-    key,
-    accessKeyId: config.accessKeyId,
-    secretAccessKey: config.secretAccessKey,
-  });
-
-  const response = await client.request({
+  const signed = signedGet(config, { key });
+  const response = await http().request({
     url: signed.url,
-    method: signed.method,
-    headers: signed.headers,
+    method: "GET",
   });
 
   if (!response.ok) {
+    const body = await response.text();
+    if (/<Error[\s>]/i.test(body)) {
+      const code = firstXml(body, "Code") ?? "Unknown";
+      const message = firstXml(body, "Message") ?? body.slice(0, 240);
+      throw new Error(`R2 get error for ${key}: ${code}: ${message}`);
+    }
     throw new Error(
-      `R2 get failed (${response.status}) for ${key}: ${(await response.text()).slice(0, 240)}`,
+      `R2 get failed (${response.status}) for ${key}: ${body.slice(0, 240)}`,
     );
   }
 
@@ -169,3 +202,6 @@ export const presignGet = (
     secretAccessKey: config.secretAccessKey,
     expiresSeconds,
   }).url;
+
+export const __parseListXmlForTests = parseListXml;
+export const __assertListXmlForTests = assertListXml;

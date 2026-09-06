@@ -45,7 +45,11 @@ type EntryAssets = {
   archives: { key: string; name: string }[];
 };
 
-const rootPrefix = (config: R2Config) => `${config.prefix}/`;
+/** Empty prefix = bucket root. Never emit a bare "/" list prefix. */
+const rootPrefix = (prefix: string): string => {
+  const value = prefix.replace(/^\/+|\/+$/g, "");
+  return value ? `${value}/` : "";
+};
 
 const toItem = async (
   config: R2Config,
@@ -61,17 +65,23 @@ const toItem = async (
     coverKey: entry.coverKey,
     details,
     archives: entry.archives,
+    allowArchiveExtract: false,
+    fallbackToPlaceholder: true,
   }),
   rating: ContentRating.EVERYONE,
 });
 
-const listEntries = async (config: R2Config): Promise<EntryAssets[]> => {
-  const listed = await listAll(config, rootPrefix(config), "/");
+const buildEntries = async (
+  config: R2Config,
+  folderPrefixes: string[],
+  root: string,
+): Promise<EntryAssets[]> => {
   const entries: EntryAssets[] = [];
+  const rootId = root.replace(/\/+$/, "");
 
-  for (const prefix of listed.prefixes) {
-    const id = folderIdFromPrefix(prefix, config.prefix);
-    if (!id) continue;
+  for (const prefix of folderPrefixes) {
+    const id = folderIdFromPrefix(prefix, rootId);
+    if (!id || id.includes("/")) continue;
 
     const children = await listAll(config, prefix);
     const coverKey = children.objects.find((object) =>
@@ -88,10 +98,48 @@ const listEntries = async (config: R2Config): Promise<EntryAssets[]> => {
       }))
       .sort((left, right) => naturalCompare(left.name, right.name));
 
+    if (!archives.length && !detailsKey && !coverKey) continue;
+
     entries.push({ id, prefix, coverKey, detailsKey, archives });
   }
 
   return entries.sort((left, right) => naturalCompare(left.id, right.id));
+};
+
+const listEntriesAtRoot = async (
+  config: R2Config,
+  root: string,
+): Promise<EntryAssets[]> => {
+  const listed = await listAll(config, root, "/");
+  let folderPrefixes = listed.prefixes;
+
+  if (!folderPrefixes.length) {
+    const flat = await listAll(config, root);
+    const ids = new Set<string>();
+    for (const object of flat.objects) {
+      const rest =
+        root && object.key.startsWith(root)
+          ? object.key.slice(root.length)
+          : object.key;
+      const id = rest.split("/").find((part) => part.length > 0);
+      if (id) ids.add(id);
+    }
+    folderPrefixes = [...ids].map((id) => `${root}${id}/`);
+  }
+
+  return buildEntries(config, folderPrefixes, root);
+};
+
+const listEntries = async (config: R2Config): Promise<EntryAssets[]> => {
+  const configuredRoot = rootPrefix(config.prefix);
+  let entries = await listEntriesAtRoot(config, configuredRoot);
+
+  // If Root Prefix is still "manga" but titles sit at bucket root, fall back.
+  if (!entries.length && configuredRoot) {
+    entries = await listEntriesAtRoot(config, "");
+  }
+
+  return entries;
 };
 
 const loadDetails = async (
@@ -113,9 +161,8 @@ const findEntry = async (
 ): Promise<EntryAssets> => {
   const entry = (await listEntries(config)).find((item) => item.id === contentId);
   if (!entry) {
-    throw new Error(
-      `Manga folder not found under ${config.prefix}/${contentId}/`,
-    );
+    const root = rootPrefix(config.prefix) || "(bucket root)/";
+    throw new Error(`Manga folder not found under ${root}${contentId}/`);
   }
   return entry;
 };
@@ -124,7 +171,7 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.r2-library",
     name: "R2 Library",
-    version: 1.2,
+    version: 1.3,
     website: "https://developers.cloudflare.com/r2/",
     languages: ["en"],
     rating: ContentRating.EVERYONE,
@@ -139,7 +186,7 @@ export default class Target {
     const accessKeyId = (await ObjectStore.string(SETTINGS.accessKeyId)) ?? "";
     const bucket = (await ObjectStore.string(SETTINGS.bucket)) ?? "";
     const endpoint = (await ObjectStore.string(SETTINGS.endpoint)) ?? "";
-    const prefix = (await ObjectStore.string(SETTINGS.prefix)) ?? "manga";
+    const prefix = (await ObjectStore.string(SETTINGS.prefix)) ?? "";
     const hasSecret = !!(await ObjectStore.string(SETTINGS.secretAccessKey));
 
     return {
@@ -147,7 +194,7 @@ export default class Target {
         {
           header: "Cloudflare R2",
           footer:
-            "Create an R2 API token with Object Read. Leave Endpoint blank to use https://<accountId>.r2.cloudflarestorage.com",
+            "Needs an Object Read API token. Leave Endpoint blank for https://<accountId>.r2.cloudflarestorage.com. Leave Root Prefix empty when title folders are at the bucket root (your setup: bucket=manga, folders at root).",
           views: [
             UITextField({
               id: SETTINGS.accountId,
@@ -172,6 +219,7 @@ export default class Target {
               id: SETTINGS.bucket,
               title: "Bucket",
               currentValue: bucket,
+              placeholder: "manga",
             }),
             UITextField({
               id: SETTINGS.endpoint,
@@ -183,7 +231,7 @@ export default class Target {
               id: SETTINGS.prefix,
               title: "Root Prefix",
               currentValue: prefix,
-              placeholder: "manga",
+              placeholder: "(empty = bucket root)",
             }),
           ],
         },
@@ -274,32 +322,30 @@ export default class Target {
       coverKey: entry.coverKey,
       details,
       archives: entry.archives,
+      allowArchiveExtract: true,
+      fallbackToPlaceholder: true,
     });
 
     if (!coverImage) {
       throw new Error(
-        `Missing cover for ${config.prefix}/${contentId}/. Add cover.(png|jpg|webp), or set details.cover to an http(s) URL or a chapter page ref like "chapter 4_24.png".`,
+        `Missing cover for ${contentId}. Add cover.(png|jpg|webp), or set details.cover to an http(s) URL or chapter page ref like "chapter 4_24.png".`,
       );
     }
 
     if (details) {
-      // Don't let a chapter-page ref / relative cover leak through as coverImage.
       return contentFromDetails(
         { ...details, cover: undefined },
-        {
-          id: contentId,
-          coverImage,
-        },
+        { id: contentId, coverImage: coverImage },
       );
     }
 
     return {
       title: contentId,
-      coverImage,
+      coverImage: coverImage,
       rating: ContentRating.EVERYONE,
       status: ContentStatus.UNKNOWN,
       contentType: ContentType.MANGA,
-      summary: `Imported from R2 folder ${config.prefix}/${contentId}/`,
+      summary: `Imported from R2 folder ${contentId}/`,
       additionalDetails: {
         Folder: contentId,
         Chapters: String(entry.archives.length),

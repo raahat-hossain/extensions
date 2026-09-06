@@ -14,12 +14,16 @@ export type CoverArchive = {
 
 const coverCache = new Map<string, string>();
 
+/** Tiny neutral PNG so list tiles always have a coverImage. */
+export const PLACEHOLDER_COVER =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAPElEQVR42mNgYGD4z8DAwMgABXAGJAEY6AAjAwMDAyMjI8N/RhD4z8DIyAhlwBRABRkZGf6D5MEKYJJwBTA+AFjpAwB+1Qn6nY5qAAAAAABJRU5ErkJggg==";
+
 /**
  * Resolve a title cover, in order:
  * 1. cover.(png|jpg|jpeg|webp|…) object in the folder
  * 2. details.cover absolute http(s) URL
  * 3. details.cover chapter-page ref: "[chapter name]_[page name]"
- *    e.g. "chapter 4_24.png" → page 24.png inside chapter 4.cbz
+ * 4. (optional) first page of the first chapter archive
  */
 export const resolveCoverImage = async (options: {
   config: R2Config;
@@ -27,36 +31,69 @@ export const resolveCoverImage = async (options: {
   coverKey?: string;
   details: DetailsFile | null;
   archives: CoverArchive[];
+  allowArchiveExtract?: boolean;
+  fallbackToPlaceholder?: boolean;
 }): Promise<string | undefined> => {
-  const { config, contentId, coverKey, details, archives } = options;
+  const {
+    config,
+    contentId,
+    coverKey,
+    details,
+    archives,
+    allowArchiveExtract = true,
+    fallbackToPlaceholder = false,
+  } = options;
 
   if (coverKey) {
     return presignGet(config, coverKey, 60 * 60);
   }
 
   const coverValue = details?.cover?.trim();
-  if (!coverValue) return undefined;
+  if (coverValue) {
+    if (/^https?:\/\//i.test(coverValue) || coverValue.startsWith("data:")) {
+      return coverValue;
+    }
 
-  if (/^https?:\/\//i.test(coverValue) || coverValue.startsWith("data:")) {
-    return coverValue;
+    const ref = parseChapterPageRef(coverValue);
+    if (ref && allowArchiveExtract) {
+      const cacheKey = `${config.bucket}:${contentId}:${ref.chapter}:${ref.page}`;
+      const cached = coverCache.get(cacheKey);
+      if (cached) return cached;
+
+      const archive = findArchiveByChapterName(archives, ref.chapter);
+      if (!archive) {
+        throw new Error(
+          `Cover ref "${coverValue}" points at chapter "${ref.chapter}", but no matching .cbz/.zip was found in ${config.prefix}/${contentId}/`,
+        );
+      }
+
+      const bytes = await getObjectBytes(config, archive.key);
+      const dataUrl = extractArchivePageDataUrl(bytes, ref.page);
+      coverCache.set(cacheKey, dataUrl);
+      return dataUrl;
+    }
   }
 
-  const ref = parseChapterPageRef(coverValue);
-  if (!ref) return undefined;
+  if (allowArchiveExtract && archives[0]) {
+    const cacheKey = `${config.bucket}:${contentId}:__first__`;
+    const cached = coverCache.get(cacheKey);
+    if (cached) return cached;
 
-  const cacheKey = `${config.bucket}:${contentId}:${ref.chapter}:${ref.page}`;
-  const cached = coverCache.get(cacheKey);
-  if (cached) return cached;
-
-  const archive = findArchiveByChapterName(archives, ref.chapter);
-  if (!archive) {
-    throw new Error(
-      `Cover ref "${coverValue}" points at chapter "${ref.chapter}", but no matching .cbz/.zip was found in ${config.prefix}/${contentId}/`,
-    );
+    try {
+      const bytes = await getObjectBytes(config, archives[0].key);
+      for (const guess of ["1.png", "01.png", "001.png", "1.jpg", "01.jpg", "cover.png"]) {
+        try {
+          const dataUrl = extractArchivePageDataUrl(bytes, guess);
+          coverCache.set(cacheKey, dataUrl);
+          return dataUrl;
+        } catch {
+          // try next guess
+        }
+      }
+    } catch {
+      // ignore
+    }
   }
 
-  const bytes = await getObjectBytes(config, archive.key);
-  const dataUrl = extractArchivePageDataUrl(bytes, ref.page);
-  coverCache.set(cacheKey, dataUrl);
-  return dataUrl;
+  return fallbackToPlaceholder ? PLACEHOLDER_COVER : undefined;
 };

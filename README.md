@@ -12,14 +12,19 @@ Two fixture titles (1 chapter / 2 pages each) with rich metadata. Good for verif
 
 Reads a private Cloudflare R2 bucket.
 
-Layout:
+**Root Prefix**
+
+- Leave **empty** when title folders live at the **bucket root** (common when the bucket itself is named `manga`).
+- Set to `manga` only if objects are under `manga/<title-id>/…` inside the bucket.
+
+Layout (bucket root):
 
 ```text
-manga/<title-id>/
+<title-id>/
   details.json          # optional metadata
   cover.webp            # optional if details.cover is set
-  chapter 1.cbz
-  chapter 4.cbz
+  chapter 1.cbz | .zip
+  chapter 4.cbz | .zip
 ```
 
 **Cover resolution**
@@ -27,6 +32,7 @@ manga/<title-id>/
 1. `cover.*` file in the folder
 2. `details.cover` absolute `http(s)` URL
 3. `details.cover` chapter-page ref: `"[chapter name]_[page name]"`
+4. Placeholder tile if none of the above (list/browse still works)
 
 Example:
 

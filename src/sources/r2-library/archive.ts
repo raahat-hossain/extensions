@@ -117,12 +117,16 @@ export const folderIdFromPrefix = (
   prefix: string,
   rootPrefix: string,
 ): string => {
-  const root = `${rootPrefix.replace(/^\/+|\/+$/g, "")}/`;
-  const normalized = prefix.replace(/^\/+/, "");
-  const relative = normalized.startsWith(root)
-    ? normalized.slice(root.length)
-    : normalized;
-  return relative.replace(/\/+$/, "");
+  const cleaned = rootPrefix.replace(/^\/+|\/+$/g, "");
+  const normalized = prefix.replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!cleaned) {
+    return normalized.split("/")[0] ?? "";
+  }
+
+  const root = `${cleaned}/`;
+  const full = prefix.replace(/^\/+/, "");
+  const relative = full.startsWith(root) ? full.slice(root.length) : full;
+  return relative.replace(/\/+$/, "").split("/")[0] ?? "";
 };
 
 export const naturalCompare = (left: string, right: string): number =>

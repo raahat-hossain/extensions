@@ -13,6 +13,7 @@ export type R2Config = {
   secretAccessKey: string;
   bucket: string;
   endpoint: string;
+  /** Empty string = list from bucket root. */
   prefix: string;
 };
 
@@ -27,7 +28,8 @@ export const loadConfig = async (): Promise<R2Config> => {
   const secretAccessKey = await readString(SETTINGS.secretAccessKey);
   const bucket = await readString(SETTINGS.bucket);
   const endpointOverride = await readString(SETTINGS.endpoint);
-  const prefixRaw = (await readString(SETTINGS.prefix)) || "manga";
+  // Default empty: titles often live at bucket root when the bucket is already named "manga".
+  const prefixRaw = await readString(SETTINGS.prefix);
 
   if (!accountId || !accessKeyId || !secretAccessKey || !bucket) {
     throw new Error(

@@ -3321,10 +3321,16 @@ var SourcePackage = (() => {
       };
       exports.basename = basename;
       var folderIdFromPrefix = (prefix, rootPrefix) => {
-        const root = `${rootPrefix.replace(/^\/+|\/+$/g, "")}/`;
-        const normalized = prefix.replace(/^\/+/, "");
-        const relative = normalized.startsWith(root) ? normalized.slice(root.length) : normalized;
-        return relative.replace(/\/+$/, "");
+        var _a, _b;
+        const cleaned = rootPrefix.replace(/^\/+|\/+$/g, "");
+        const normalized = prefix.replace(/^\/+/, "").replace(/\/+$/, "");
+        if (!cleaned) {
+          return (_a = normalized.split("/")[0]) != null ? _a : "";
+        }
+        const root = `${cleaned}/`;
+        const full = prefix.replace(/^\/+/, "");
+        const relative = full.startsWith(root) ? full.slice(root.length) : full;
+        return (_b = relative.replace(/\/+$/, "").split("/")[0]) != null ? _b : "";
       };
       exports.folderIdFromPrefix = folderIdFromPrefix;
       var naturalCompare = (left, right) => left.localeCompare(right, void 0, { numeric: true, sensitivity: "base" });
@@ -3391,7 +3397,7 @@ var SourcePackage = (() => {
         const secretAccessKey = await readString(exports.SETTINGS.secretAccessKey);
         const bucket = await readString(exports.SETTINGS.bucket);
         const endpointOverride = await readString(exports.SETTINGS.endpoint);
-        const prefixRaw = await readString(exports.SETTINGS.prefix) || "manga";
+        const prefixRaw = await readString(exports.SETTINGS.prefix);
         if (!accountId || !accessKeyId || !secretAccessKey || !bucket) {
           throw new Error("R2 Library is not configured. Open source settings and set Account ID, Access Key ID, Secret Access Key, and Bucket.");
         }
@@ -3457,11 +3463,9 @@ var SourcePackage = (() => {
         if (!match) {
           throw new Error(`Invalid endpoint URL: ${value}`);
         }
-        const protocol = match[1].toLowerCase();
-        const host = match[2];
         return {
-          origin: `${protocol}://${host}`,
-          host
+          origin: `${match[1].toLowerCase()}://${match[2]}`,
+          host: match[2]
         };
       };
       var signRequest = (options) => {
@@ -3539,18 +3543,24 @@ var SourcePackage = (() => {
       init_Buffer();
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
-      exports.presignGet = exports.getObjectText = exports.getObjectBytes = exports.listAll = void 0;
+      exports.__assertListXmlForTests = exports.__parseListXmlForTests = exports.presignGet = exports.getObjectText = exports.getObjectBytes = exports.listAll = void 0;
       var aws4_1 = require_aws4();
       var crypto_1 = require_crypto();
-      var client = new HttpClient({
-        timeout: 6e4,
-        validateStatus: () => true
-      });
+      var client;
+      var http = () => {
+        if (!client) {
+          client = new HttpClient({
+            timeout: 6e4,
+            validateStatus: () => true
+          });
+        }
+        return client;
+      };
       var decodeXml = (value) => value.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
       var xmlValues = (xml, tag) => {
         var _a;
         const values = [];
-        const pattern = new RegExp(`<${tag}>([^<]*)</${tag}>`, "g");
+        const pattern = new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>`, "g");
         let match;
         while (match = pattern.exec(xml)) {
           values.push(decodeXml((_a = match[1]) != null ? _a : ""));
@@ -3558,37 +3568,22 @@ var SourcePackage = (() => {
         return values;
       };
       var firstXml = (xml, tag) => xmlValues(xml, tag)[0];
-      var listPage = async (config, prefix, options = {}) => {
-        var _a, _b, _c;
-        const query = {
-          "list-type": "2",
-          prefix
-        };
-        if (options.delimiter)
-          query.delimiter = options.delimiter;
-        if (options.continuationToken) {
-          query["continuation-token"] = options.continuationToken;
+      var assertListXml = (xml, status) => {
+        var _a, _b;
+        if (/<Error[\s>]/i.test(xml)) {
+          const code = (_a = firstXml(xml, "Code")) != null ? _a : "Unknown";
+          const message = (_b = firstXml(xml, "Message")) != null ? _b : xml.slice(0, 240);
+          throw new Error(`R2 list error (${status}) ${code}: ${message}`);
         }
-        const signed = (0, aws4_1.signRequest)({
-          method: "GET",
-          endpoint: config.endpoint,
-          bucket: config.bucket,
-          accessKeyId: config.accessKeyId,
-          secretAccessKey: config.secretAccessKey,
-          query
-        });
-        const response = await client.request({
-          url: signed.url,
-          method: signed.method,
-          headers: signed.headers
-        });
-        if (!response.ok) {
-          throw new Error(`R2 list failed (${response.status}): ${(await response.text()).slice(0, 240)}`);
+        if (!/<ListBucketResult[\s>]/i.test(xml)) {
+          throw new Error(`Unexpected R2 list response (${status}): ${xml.slice(0, 240)}`);
         }
-        const xml = await response.text();
-        const commonBlocks = (_a = xml.match(/<CommonPrefixes>[\s\S]*?<\/CommonPrefixes>/g)) != null ? _a : [];
+      };
+      var parseListXml = (xml) => {
+        var _a, _b, _c, _d;
+        const commonBlocks = (_a = xml.match(/<CommonPrefixes>[\s\S]*?<\/CommonPrefixes>/gi)) != null ? _a : [];
         const prefixes = commonBlocks.map((block) => firstXml(block, "Prefix")).filter((value) => !!value);
-        const contentBlocks = (_b = xml.match(/<Contents>[\s\S]*?<\/Contents>/g)) != null ? _b : [];
+        const contentBlocks = (_b = xml.match(/<Contents>[\s\S]*?<\/Contents>/gi)) != null ? _b : [];
         const objects = [];
         for (const block of contentBlocks) {
           const key = firstXml(block, "Key");
@@ -3603,8 +3598,41 @@ var SourcePackage = (() => {
         return {
           prefixes,
           objects,
-          continuationToken: firstXml(xml, "IsTruncated") === "true" ? firstXml(xml, "NextContinuationToken") : void 0
+          continuationToken: ((_d = firstXml(xml, "IsTruncated")) == null ? void 0 : _d.toLowerCase()) === "true" ? firstXml(xml, "NextContinuationToken") : void 0
         };
+      };
+      var signedGet = (config, options) => (0, aws4_1.signRequest)({
+        method: "GET",
+        endpoint: config.endpoint,
+        bucket: config.bucket,
+        key: options.key,
+        accessKeyId: config.accessKeyId,
+        secretAccessKey: config.secretAccessKey,
+        query: options.query,
+        expiresSeconds: 60 * 15
+      });
+      var listPage = async (config, prefix, options = {}) => {
+        const query = {
+          "list-type": "2",
+          "max-keys": "1000",
+          prefix
+        };
+        if (options.delimiter)
+          query.delimiter = options.delimiter;
+        if (options.continuationToken) {
+          query["continuation-token"] = options.continuationToken;
+        }
+        const signed = signedGet(config, { query });
+        const response = await http().request({
+          url: signed.url,
+          method: "GET"
+        });
+        const xml = await response.text();
+        assertListXml(xml, response.status);
+        if (!response.ok) {
+          throw new Error(`R2 list failed (${response.status}): ${xml.slice(0, 240)}`);
+        }
+        return parseListXml(xml);
       };
       var listAll = async (config, prefix, delimiter) => {
         const prefixes = [];
@@ -3620,21 +3648,20 @@ var SourcePackage = (() => {
       };
       exports.listAll = listAll;
       var getObjectBytes = async (config, key) => {
-        const signed = (0, aws4_1.signRequest)({
-          method: "GET",
-          endpoint: config.endpoint,
-          bucket: config.bucket,
-          key,
-          accessKeyId: config.accessKeyId,
-          secretAccessKey: config.secretAccessKey
-        });
-        const response = await client.request({
+        var _a, _b;
+        const signed = signedGet(config, { key });
+        const response = await http().request({
           url: signed.url,
-          method: signed.method,
-          headers: signed.headers
+          method: "GET"
         });
         if (!response.ok) {
-          throw new Error(`R2 get failed (${response.status}) for ${key}: ${(await response.text()).slice(0, 240)}`);
+          const body = await response.text();
+          if (/<Error[\s>]/i.test(body)) {
+            const code = (_a = firstXml(body, "Code")) != null ? _a : "Unknown";
+            const message = (_b = firstXml(body, "Message")) != null ? _b : body.slice(0, 240);
+            throw new Error(`R2 get error for ${key}: ${code}: ${message}`);
+          }
+          throw new Error(`R2 get failed (${response.status}) for ${key}: ${body.slice(0, 240)}`);
         }
         return response.bytes();
       };
@@ -3651,6 +3678,8 @@ var SourcePackage = (() => {
         expiresSeconds
       }).url;
       exports.presignGet = presignGet;
+      exports.__parseListXmlForTests = parseListXml;
+      exports.__assertListXmlForTests = assertListXml;
     }
   });
 
@@ -3661,37 +3690,57 @@ var SourcePackage = (() => {
       init_Buffer();
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
-      exports.resolveCoverImage = void 0;
+      exports.resolveCoverImage = exports.PLACEHOLDER_COVER = void 0;
       var archive_1 = require_archive();
       var r2_1 = require_r2();
       var coverCache = /* @__PURE__ */ new Map();
+      exports.PLACEHOLDER_COVER = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAPElEQVR42mNgYGD4z8DAwMgABXAGJAEY6AAjAwMDAyMjI8N/RhD4z8DIyAhlwBRABRkZGf6D5MEKYJJwBTA+AFjpAwB+1Qn6nY5qAAAAAABJRU5ErkJggg==";
       var resolveCoverImage = async (options) => {
         var _a;
-        const { config, contentId, coverKey, details, archives } = options;
+        const { config, contentId, coverKey, details, archives, allowArchiveExtract = true, fallbackToPlaceholder = false } = options;
         if (coverKey) {
           return (0, r2_1.presignGet)(config, coverKey, 60 * 60);
         }
         const coverValue = (_a = details == null ? void 0 : details.cover) == null ? void 0 : _a.trim();
-        if (!coverValue)
-          return void 0;
-        if (/^https?:\/\//i.test(coverValue) || coverValue.startsWith("data:")) {
-          return coverValue;
+        if (coverValue) {
+          if (/^https?:\/\//i.test(coverValue) || coverValue.startsWith("data:")) {
+            return coverValue;
+          }
+          const ref = (0, archive_1.parseChapterPageRef)(coverValue);
+          if (ref && allowArchiveExtract) {
+            const cacheKey = `${config.bucket}:${contentId}:${ref.chapter}:${ref.page}`;
+            const cached = coverCache.get(cacheKey);
+            if (cached)
+              return cached;
+            const archive = (0, archive_1.findArchiveByChapterName)(archives, ref.chapter);
+            if (!archive) {
+              throw new Error(`Cover ref "${coverValue}" points at chapter "${ref.chapter}", but no matching .cbz/.zip was found in ${config.prefix}/${contentId}/`);
+            }
+            const bytes = await (0, r2_1.getObjectBytes)(config, archive.key);
+            const dataUrl = (0, archive_1.extractArchivePageDataUrl)(bytes, ref.page);
+            coverCache.set(cacheKey, dataUrl);
+            return dataUrl;
+          }
         }
-        const ref = (0, archive_1.parseChapterPageRef)(coverValue);
-        if (!ref)
-          return void 0;
-        const cacheKey = `${config.bucket}:${contentId}:${ref.chapter}:${ref.page}`;
-        const cached = coverCache.get(cacheKey);
-        if (cached)
-          return cached;
-        const archive = (0, archive_1.findArchiveByChapterName)(archives, ref.chapter);
-        if (!archive) {
-          throw new Error(`Cover ref "${coverValue}" points at chapter "${ref.chapter}", but no matching .cbz/.zip was found in ${config.prefix}/${contentId}/`);
+        if (allowArchiveExtract && archives[0]) {
+          const cacheKey = `${config.bucket}:${contentId}:__first__`;
+          const cached = coverCache.get(cacheKey);
+          if (cached)
+            return cached;
+          try {
+            const bytes = await (0, r2_1.getObjectBytes)(config, archives[0].key);
+            for (const guess of ["1.png", "01.png", "001.png", "1.jpg", "01.jpg", "cover.png"]) {
+              try {
+                const dataUrl = (0, archive_1.extractArchivePageDataUrl)(bytes, guess);
+                coverCache.set(cacheKey, dataUrl);
+                return dataUrl;
+              } catch {
+              }
+            }
+          } catch {
+          }
         }
-        const bytes = await (0, r2_1.getObjectBytes)(config, archive.key);
-        const dataUrl = (0, archive_1.extractArchivePageDataUrl)(bytes, ref.page);
-        coverCache.set(cacheKey, dataUrl);
-        return dataUrl;
+        return fallbackToPlaceholder ? exports.PLACEHOLDER_COVER : void 0;
       };
       exports.resolveCoverImage = resolveCoverImage;
     }
@@ -3829,7 +3878,10 @@ var SourcePackage = (() => {
       var cover_1 = require_cover();
       var details_1 = require_details();
       var r2_1 = require_r2();
-      var rootPrefix = (config) => `${config.prefix}/`;
+      var rootPrefix = (prefix) => {
+        const value = prefix.replace(/^\/+|\/+$/g, "");
+        return value ? `${value}/` : "";
+      };
       var toItem = async (config, entry, details, title) => {
         var _a;
         return {
@@ -3840,18 +3892,20 @@ var SourcePackage = (() => {
             contentId: entry.id,
             coverKey: entry.coverKey,
             details,
-            archives: entry.archives
+            archives: entry.archives,
+            allowArchiveExtract: false,
+            fallbackToPlaceholder: true
           }),
           rating: types_1.ContentRating.EVERYONE
         };
       };
-      var listEntries = async (config) => {
+      var buildEntries = async (config, folderPrefixes, root) => {
         var _a, _b;
-        const listed = await (0, r2_1.listAll)(config, rootPrefix(config), "/");
         const entries = [];
-        for (const prefix of listed.prefixes) {
-          const id = (0, archive_1.folderIdFromPrefix)(prefix, config.prefix);
-          if (!id)
+        const rootId = root.replace(/\/+$/, "");
+        for (const prefix of folderPrefixes) {
+          const id = (0, archive_1.folderIdFromPrefix)(prefix, rootId);
+          if (!id || id.includes("/"))
             continue;
           const children = await (0, r2_1.listAll)(config, prefix);
           const coverKey = (_a = children.objects.find((object) => (0, archive_1.isCoverName)((0, archive_1.basename)(object.key)))) == null ? void 0 : _a.key;
@@ -3860,9 +3914,35 @@ var SourcePackage = (() => {
             key: object.key,
             name: (0, archive_1.basename)(object.key)
           })).sort((left, right) => (0, archive_1.naturalCompare)(left.name, right.name));
+          if (!archives.length && !detailsKey && !coverKey)
+            continue;
           entries.push({ id, prefix, coverKey, detailsKey, archives });
         }
         return entries.sort((left, right) => (0, archive_1.naturalCompare)(left.id, right.id));
+      };
+      var listEntriesAtRoot = async (config, root) => {
+        const listed = await (0, r2_1.listAll)(config, root, "/");
+        let folderPrefixes = listed.prefixes;
+        if (!folderPrefixes.length) {
+          const flat = await (0, r2_1.listAll)(config, root);
+          const ids = /* @__PURE__ */ new Set();
+          for (const object of flat.objects) {
+            const rest = root && object.key.startsWith(root) ? object.key.slice(root.length) : object.key;
+            const id = rest.split("/").find((part) => part.length > 0);
+            if (id)
+              ids.add(id);
+          }
+          folderPrefixes = [...ids].map((id) => `${root}${id}/`);
+        }
+        return buildEntries(config, folderPrefixes, root);
+      };
+      var listEntries = async (config) => {
+        const configuredRoot = rootPrefix(config.prefix);
+        let entries = await listEntriesAtRoot(config, configuredRoot);
+        if (!entries.length && configuredRoot) {
+          entries = await listEntriesAtRoot(config, "");
+        }
+        return entries;
       };
       var loadDetails = async (config, entry) => {
         if (!entry.detailsKey)
@@ -3877,7 +3957,8 @@ var SourcePackage = (() => {
       var findEntry = async (config, contentId) => {
         const entry = (await listEntries(config)).find((item) => item.id === contentId);
         if (!entry) {
-          throw new Error(`Manga folder not found under ${config.prefix}/${contentId}/`);
+          const root = rootPrefix(config.prefix) || "(bucket root)/";
+          throw new Error(`Manga folder not found under ${root}${contentId}/`);
         }
         return entry;
       };
@@ -3892,13 +3973,13 @@ var SourcePackage = (() => {
             const accessKeyId = (_b = await ObjectStore.string(config_1.SETTINGS.accessKeyId)) != null ? _b : "";
             const bucket = (_c = await ObjectStore.string(config_1.SETTINGS.bucket)) != null ? _c : "";
             const endpoint = (_d = await ObjectStore.string(config_1.SETTINGS.endpoint)) != null ? _d : "";
-            const prefix = (_e = await ObjectStore.string(config_1.SETTINGS.prefix)) != null ? _e : "manga";
+            const prefix = (_e = await ObjectStore.string(config_1.SETTINGS.prefix)) != null ? _e : "";
             const hasSecret = !!await ObjectStore.string(config_1.SETTINGS.secretAccessKey);
             return {
               sections: [
                 {
                   header: "Cloudflare R2",
-                  footer: "Create an R2 API token with Object Read. Leave Endpoint blank to use https://<accountId>.r2.cloudflarestorage.com",
+                  footer: "Needs an Object Read API token. Leave Endpoint blank for https://<accountId>.r2.cloudflarestorage.com. Leave Root Prefix empty when title folders are at the bucket root (your setup: bucket=manga, folders at root).",
                   views: [
                     (0, types_1.UITextField)({
                       id: config_1.SETTINGS.accountId,
@@ -3920,7 +4001,8 @@ var SourcePackage = (() => {
                     (0, types_1.UITextField)({
                       id: config_1.SETTINGS.bucket,
                       title: "Bucket",
-                      currentValue: bucket
+                      currentValue: bucket,
+                      placeholder: "manga"
                     }),
                     (0, types_1.UITextField)({
                       id: config_1.SETTINGS.endpoint,
@@ -3932,7 +4014,7 @@ var SourcePackage = (() => {
                       id: config_1.SETTINGS.prefix,
                       title: "Root Prefix",
                       currentValue: prefix,
-                      placeholder: "manga"
+                      placeholder: "(empty = bucket root)"
                     })
                   ]
                 }
@@ -4005,16 +4087,15 @@ var SourcePackage = (() => {
               contentId,
               coverKey: entry.coverKey,
               details,
-              archives: entry.archives
+              archives: entry.archives,
+              allowArchiveExtract: true,
+              fallbackToPlaceholder: true
             });
             if (!coverImage) {
-              throw new Error(`Missing cover for ${config.prefix}/${contentId}/. Add cover.(png|jpg|webp), or set details.cover to an http(s) URL or a chapter page ref like "chapter 4_24.png".`);
+              throw new Error(`Missing cover for ${contentId}. Add cover.(png|jpg|webp), or set details.cover to an http(s) URL or chapter page ref like "chapter 4_24.png".`);
             }
             if (details) {
-              return (0, details_1.contentFromDetails)({ ...details, cover: void 0 }, {
-                id: contentId,
-                coverImage
-              });
+              return (0, details_1.contentFromDetails)({ ...details, cover: void 0 }, { id: contentId, coverImage });
             }
             return {
               title: contentId,
@@ -4022,7 +4103,7 @@ var SourcePackage = (() => {
               rating: types_1.ContentRating.EVERYONE,
               status: types_1.ContentStatus.UNKNOWN,
               contentType: types_1.ContentType.MANGA,
-              summary: `Imported from R2 folder ${config.prefix}/${contentId}/`,
+              summary: `Imported from R2 folder ${contentId}/`,
               additionalDetails: {
                 Folder: contentId,
                 Chapters: String(entry.archives.length)
@@ -4052,7 +4133,7 @@ var SourcePackage = (() => {
       __publicField(Target, "info", {
         id: "en.r2-library",
         name: "R2 Library",
-        version: 1.2,
+        version: 1.3,
         website: "https://developers.cloudflare.com/r2/",
         languages: ["en"],
         rating: types_1.ContentRating.EVERYONE
@@ -4069,7 +4150,7 @@ var SourcePackage = (() => {
       var runtime = require_runtime();
       var sourceModule = require_r2_library();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.2, "website": "https://developers.cloudflare.com/r2/", "languages": ["en"], "rating": 0 };
+      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.3, "website": "https://developers.cloudflare.com/r2/", "languages": ["en"], "rating": 0 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

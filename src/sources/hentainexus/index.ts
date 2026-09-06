@@ -90,6 +90,11 @@ export default class Target {
   getHomePage = async (): Promise<HomePage> => ({
     feeds: [
       {
+        id: "popular",
+        title: "Popular Now",
+        content: { list: { key: "popular", disableSorting: true } },
+      },
+      {
         id: "latest",
         title: "Latest",
         content: { list: { key: "latest", disableSorting: true } },
@@ -187,9 +192,21 @@ export default class Target {
   };
 
   getItemList = async (
-    _request: ItemListRequest,
+    request: ItemListRequest,
     page: number,
   ): Promise<PagedItemList> => {
+    // Keiyoushi: page 1 popular is /explore/hot; later pages fall back to sort:popular search.
+    if (request.key === "popular") {
+      if (page === 1) {
+        const html = await fetchHtml("/explore/hot");
+        const { items } = parseMangaList(html);
+        return { items, isLastPage: false };
+      }
+      const html = await fetchHtml(listUrl(page - 1, "sort:popular"));
+      const { items, hasNextPage } = parseMangaList(html);
+      return { items, isLastPage: !hasNextPage || items.length === 0 };
+    }
+
     const html = await fetchHtml(listUrl(page));
     const { items, hasNextPage } = parseMangaList(html);
     return { items, isLastPage: !hasNextPage || items.length === 0 };

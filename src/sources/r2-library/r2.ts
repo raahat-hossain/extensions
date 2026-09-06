@@ -1,5 +1,6 @@
 import { signRequest } from "./aws4";
 import type { R2Config } from "./config";
+import { utf8Decode } from "./crypto";
 
 export type R2Object = {
   key: string;
@@ -152,8 +153,7 @@ export const getObjectBytes = async (
 export const getObjectText = async (
   config: R2Config,
   key: string,
-): Promise<string> =>
-  new TextDecoder().decode(await getObjectBytes(config, key));
+): Promise<string> => utf8Decode(await getObjectBytes(config, key));
 
 export const presignGet = (
   config: R2Config,

@@ -1,0 +1,24 @@
+{
+  "name": "suwatte-extensions",
+  "version": "1.0.0",
+  "description": "Suwatte source plugins",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "suwatte build",
+    "serve": "suwatte serve",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "suwatte": {
+    "listName": "Dev Extensions"
+  },
+  "devDependencies": {
+    "@suwatte/toolchain": "^1.0.0",
+    "@types/node": "^22.4.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

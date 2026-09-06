@@ -55,6 +55,24 @@ const signingKey = (
   return hmacSha256(kService, "aws4_request");
 };
 
+const parseHttpUrl = (
+  value: string,
+): { origin: string; host: string } => {
+  const match = value
+    .trim()
+    .replace(/\/+$/, "")
+    .match(/^(https?):\/\/([^/?#]+)/i);
+  if (!match) {
+    throw new Error(`Invalid endpoint URL: ${value}`);
+  }
+  const protocol = match[1]!.toLowerCase();
+  const host = match[2]!;
+  return {
+    origin: `${protocol}://${host}`,
+    host,
+  };
+};
+
 export const signRequest = (options: SignOptions): SignedRequest => {
   const method = (options.method ?? "GET").toUpperCase();
   const region = options.region ?? "auto";
@@ -62,8 +80,7 @@ export const signRequest = (options: SignOptions): SignedRequest => {
   const { amz, stamp } = amzDate(new Date());
   const payloadHash = options.bodyHash ?? "UNSIGNED-PAYLOAD";
 
-  const endpointUrl = new URL(options.endpoint);
-  const host = endpointUrl.host;
+  const { origin, host } = parseHttpUrl(options.endpoint);
   const keyPath = options.key ? `/${options.key.replace(/^\/+/, "")}` : "";
   const canonicalUri = encodePath(`/${options.bucket}${keyPath}`);
 
@@ -123,7 +140,7 @@ export const signRequest = (options: SignOptions): SignedRequest => {
   if (options.expiresSeconds != null) {
     query["X-Amz-Signature"] = signature;
     return {
-      url: `${endpointUrl.origin}${canonicalUri}?${canonicalQuery(query)}`,
+      url: `${origin}${canonicalUri}?${canonicalQuery(query)}`,
       method,
       headers: { host },
     };
@@ -134,7 +151,7 @@ export const signRequest = (options: SignOptions): SignedRequest => {
     `SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
   return {
-    url: `${endpointUrl.origin}${canonicalUri}${queryString ? `?${queryString}` : ""}`,
+    url: `${origin}${canonicalUri}${queryString ? `?${queryString}` : ""}`,
     method,
     headers,
   };

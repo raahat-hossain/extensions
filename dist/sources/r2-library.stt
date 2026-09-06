@@ -3452,6 +3452,18 @@ var SourcePackage = (() => {
         const kService = (0, crypto_1.hmacSha256)(kRegion, service);
         return (0, crypto_1.hmacSha256)(kService, "aws4_request");
       };
+      var parseHttpUrl = (value) => {
+        const match = value.trim().replace(/\/+$/, "").match(/^(https?):\/\/([^/?#]+)/i);
+        if (!match) {
+          throw new Error(`Invalid endpoint URL: ${value}`);
+        }
+        const protocol = match[1].toLowerCase();
+        const host = match[2];
+        return {
+          origin: `${protocol}://${host}`,
+          host
+        };
+      };
       var signRequest = (options) => {
         var _a, _b, _c, _d, _e, _f;
         const method = ((_a = options.method) != null ? _a : "GET").toUpperCase();
@@ -3459,8 +3471,7 @@ var SourcePackage = (() => {
         const service = (_c = options.service) != null ? _c : "s3";
         const { amz, stamp } = amzDate(/* @__PURE__ */ new Date());
         const payloadHash = (_d = options.bodyHash) != null ? _d : "UNSIGNED-PAYLOAD";
-        const endpointUrl = new URL(options.endpoint);
-        const host = endpointUrl.host;
+        const { origin, host } = parseHttpUrl(options.endpoint);
         const keyPath = options.key ? `/${options.key.replace(/^\/+/, "")}` : "";
         const canonicalUri = encodePath(`/${options.bucket}${keyPath}`);
         const query = { ...(_e = options.query) != null ? _e : {} };
@@ -3505,14 +3516,14 @@ var SourcePackage = (() => {
         if (options.expiresSeconds != null) {
           query["X-Amz-Signature"] = signature;
           return {
-            url: `${endpointUrl.origin}${canonicalUri}?${canonicalQuery(query)}`,
+            url: `${origin}${canonicalUri}?${canonicalQuery(query)}`,
             method,
             headers: { host }
           };
         }
         headers.Authorization = `AWS4-HMAC-SHA256 Credential=${options.accessKeyId}/${stamp}/${region}/${service}/aws4_request, SignedHeaders=${signedHeaders}, Signature=${signature}`;
         return {
-          url: `${endpointUrl.origin}${canonicalUri}${queryString ? `?${queryString}` : ""}`,
+          url: `${origin}${canonicalUri}${queryString ? `?${queryString}` : ""}`,
           method,
           headers
         };
@@ -4041,7 +4052,7 @@ var SourcePackage = (() => {
       __publicField(Target, "info", {
         id: "en.r2-library",
         name: "R2 Library",
-        version: 1.1,
+        version: 1.2,
         website: "https://developers.cloudflare.com/r2/",
         languages: ["en"],
         rating: types_1.ContentRating.EVERYONE
@@ -4058,7 +4069,7 @@ var SourcePackage = (() => {
       var runtime = require_runtime();
       var sourceModule = require_r2_library();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.1, "website": "https://developers.cloudflare.com/r2/", "languages": ["en"], "rating": 0 };
+      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.2, "website": "https://developers.cloudflare.com/r2/", "languages": ["en"], "rating": 0 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

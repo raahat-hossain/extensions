@@ -2,3 +2,5 @@ node_modules/
 __temp__/
 *.log
 .DS_Store
+keiyoushi/
+.ref/

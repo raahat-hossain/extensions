@@ -164,16 +164,19 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.hentairead",
     name: "HentaiRead",
-    version: 1.2,
+    version: 1.3,
     website: BASE,
     thumbnail: "hentairead.png",
     languages: ["en"],
     rating: ContentRating.MATURE,
   };
 
-  getConfiguration = (): SourceConfiguration => ({
-    imageReferer: `${BASE}/`,
-  });
+  getConfiguration = (): SourceConfiguration =>
+    ({
+      imageReferer: `${BASE}/`,
+      // Suwatte opens this URL in a WebView when CloudflareError is thrown.
+      cloudflareResolutionURL: `${BASE}/`,
+    }) as SourceConfiguration;
 
   getHomePage = async (): Promise<HomePage> => ({
     feeds: [

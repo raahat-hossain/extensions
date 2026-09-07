@@ -36,16 +36,18 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.novelcrow",
     name: "NovelCrow",
-    version: 1.2,
+    version: 1.3,
     website: cfg.baseUrl,
     thumbnail: "novelcrow.png",
     languages: ["en"],
     rating: ContentRating.MATURE,
   };
 
-  getConfiguration = (): SourceConfiguration => ({
-    imageReferer: `${cfg.baseUrl}/`,
-  });
+  getConfiguration = (): SourceConfiguration =>
+    ({
+      imageReferer: `${cfg.baseUrl}/`,
+      cloudflareResolutionURL: `${cfg.baseUrl}/`,
+    }) as SourceConfiguration;
 
   getHomePage = async (): Promise<HomePage> => ({
     feeds: [

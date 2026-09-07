@@ -1,5 +1,11 @@
 /** Shared HTTP helpers for Suwatte JSC sources. */
 
+import {
+  looksLikeCloudflare,
+  originOf,
+  throwCloudflare,
+} from "./cloudflare";
+
 let client: InstanceType<typeof HttpClient> | undefined;
 
 export const http = (): InstanceType<typeof HttpClient> => {
@@ -37,14 +43,13 @@ export const fetchText = async (
     timeout: options?.timeout,
   });
   const body = await response.text();
-  if (
-    /just a moment|cf-mitigated|challenge-platform|cdn-cgi\/challenge/i.test(
-      body,
-    )
-  ) {
-    throw new Error(
-      `Cloudflare challenge on ${url} — open the site in Suwatte to clear it, then retry.`,
-    );
+  // Prefer CloudflareError so Suwatte auto-opens the challenge WebView.
+  if (looksLikeCloudflare(body) || response.headers.get("cf-mitigated")) {
+    throwCloudflare(originOf(url));
+  }
+  if ([403, 503].includes(response.status)) {
+    const server = (response.headers.get("server") ?? "").toLowerCase();
+    if (server.includes("cloudflare")) throwCloudflare(originOf(url));
   }
   if (!response.ok) {
     throw new Error(

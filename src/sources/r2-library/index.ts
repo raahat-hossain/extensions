@@ -11,6 +11,7 @@ import {
   type HomePage,
   type Item,
   type ItemListRequest,
+  type NetworkRequest,
   type PagedItemList,
   type PopulatedForm,
   type SearchRequest,
@@ -20,7 +21,6 @@ import {
 } from "@suwatte/toolchain/types";
 import {
   basename,
-  extractArchivePages,
   folderIdFromPrefix,
   isArchiveName,
   isCoverName,
@@ -35,6 +35,7 @@ import {
   parseDetailsJson,
   type DetailsFile,
 } from "./details";
+import { dataUrlForPage, openArchiveSession } from "./pages";
 import { getObjectBytes, getObjectText, listAll } from "./r2";
 
 type EntryAssets = {
@@ -171,7 +172,7 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.r2-library",
     name: "R2 Library",
-    version: 1.4,
+    version: 1.5,
     website: "https://developers.cloudflare.com/r2/",
     thumbnail: "r2-library.png",
     languages: ["en"],
@@ -375,6 +376,28 @@ export default class Target {
     const config = await loadConfig();
     const key = decodeURIComponent(chapterId);
     const bytes = await getObjectBytes(config, key);
-    return extractArchivePages(bytes).map((page) => ({ b64: page.b64 }));
+    // Keep image bytes in a JSC session and only send tiny page URLs across
+    // the bridge. Returning every page as base64/raw here OOMs Suwatte on
+    // real CBZs when the whole chapter is marshalled at once.
+    const { urls } = openArchiveSession(bytes);
+    return urls.map((url) => ({ url }));
+  };
+
+  /**
+   * Resolve session page URLs to data: URIs so Nuke never hits a fake host.
+   * Bytes stay in JSC until each page is actually requested.
+   * Accepts both NetworkRequest (new API) and bare URL string (older runtimes).
+   */
+  willRequestImage = async (
+    request: NetworkRequest | string,
+  ): Promise<NetworkRequest> => {
+    const url = typeof request === "string" ? request : request.url;
+    const dataUrl = dataUrlForPage(url);
+    if (!dataUrl) {
+      return typeof request === "string" ? { url: request } : request;
+    }
+    return typeof request === "string"
+      ? { url: dataUrl }
+      : { ...request, url: dataUrl };
   };
 }

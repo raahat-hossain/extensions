@@ -3937,6 +3937,126 @@ var SourcePackage = (() => {
     }
   });
 
+  // __temp__/sources/r2-library/pages.js
+  var require_pages = __commonJS({
+    "__temp__/sources/r2-library/pages.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.listImageKeys = exports.openArchiveSession = exports.dataUrlForPage = exports.parsePageUrl = exports.pageUrl = exports.PAGE_HOST = void 0;
+      var fflate_1 = require_browser();
+      var crypto_1 = require_crypto();
+      var archive_1 = require_archive();
+      var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set([
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".gif",
+        ".avif",
+        ".bmp"
+      ]);
+      var MAX_ARCHIVE_BYTES = 80 * 1024 * 1024;
+      var MAX_PAGES = 400;
+      var SESSION_TTL_MS = 30 * 60 * 1e3;
+      exports.PAGE_HOST = "https://r2-library.pages";
+      var sessions = /* @__PURE__ */ new Map();
+      var mimeForName = (name) => {
+        const lower = name.toLowerCase();
+        if (lower.endsWith(".png"))
+          return "image/png";
+        if (lower.endsWith(".webp"))
+          return "image/webp";
+        if (lower.endsWith(".gif"))
+          return "image/gif";
+        if (lower.endsWith(".avif"))
+          return "image/avif";
+        if (lower.endsWith(".bmp"))
+          return "image/bmp";
+        return "image/jpeg";
+      };
+      var isImagePath = (name) => {
+        if (!name || name.endsWith("/"))
+          return false;
+        if (name.startsWith("__MACOSX/"))
+          return false;
+        if (name.split("/").some((part) => part.startsWith(".")))
+          return false;
+        const lower = name.toLowerCase();
+        const dot = lower.lastIndexOf(".");
+        if (dot < 0)
+          return false;
+        return IMAGE_EXTENSIONS.has(lower.slice(dot));
+      };
+      var pruneSessions = () => {
+        const cutoff = Date.now() - SESSION_TTL_MS;
+        for (const [id, session] of sessions) {
+          if (session.createdAt < cutoff)
+            sessions.delete(id);
+        }
+      };
+      var newSessionId = () => `s${Date.now().toString(36)}${Math.floor(Math.random() * 1e9).toString(36)}`;
+      var pageUrl = (sessionId, index) => `${exports.PAGE_HOST}/${sessionId}/${index}`;
+      exports.pageUrl = pageUrl;
+      var parsePageUrl = (url) => {
+        const match = /^https:\/\/r2-library\.pages\/([^/]+)\/(\d+)(?:\?.*)?$/i.exec(url);
+        if (!match)
+          return null;
+        return { sessionId: match[1], index: Number(match[2]) };
+      };
+      exports.parsePageUrl = parsePageUrl;
+      var dataUrlForPage = (url) => {
+        const parsed = (0, exports.parsePageUrl)(url);
+        if (!parsed)
+          return null;
+        const session = sessions.get(parsed.sessionId);
+        const page = session == null ? void 0 : session.pages[parsed.index];
+        if (!page)
+          return null;
+        return `data:${page.mime};base64,${(0, crypto_1.bytesToBase64)(page.bytes)}`;
+      };
+      exports.dataUrlForPage = dataUrlForPage;
+      var openArchiveSession = (archiveBytes) => {
+        pruneSessions();
+        if (archiveBytes.byteLength > MAX_ARCHIVE_BYTES) {
+          throw new Error(`Chapter archive is too large (${Math.round(archiveBytes.byteLength / (1024 * 1024))} MiB). Keep CBZs under ${MAX_ARCHIVE_BYTES / (1024 * 1024)} MiB or store pages as individual image objects.`);
+        }
+        let files;
+        try {
+          files = (0, fflate_1.unzipSync)(archiveBytes, {
+            filter: (file) => isImagePath(file.name)
+          });
+        } catch (error) {
+          throw new Error(`Failed to unzip chapter archive: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        const pages = Object.entries(files).filter(([, data]) => !!(data == null ? void 0 : data.length)).map(([name, data]) => ({
+          name: (0, archive_1.basename)(name),
+          full: name,
+          data
+        })).sort((left, right) => (0, archive_1.naturalCompare)(left.full, right.full)).map(({ name, data }) => ({
+          mime: mimeForName(name),
+          bytes: data
+        }));
+        if (!pages.length) {
+          throw new Error("Archive contained no readable image pages");
+        }
+        if (pages.length > MAX_PAGES) {
+          throw new Error(`Archive has ${pages.length} pages (max ${MAX_PAGES}). Split the CBZ or store images as individual objects.`);
+        }
+        const sessionId = newSessionId();
+        sessions.set(sessionId, { createdAt: Date.now(), pages });
+        return {
+          sessionId,
+          urls: pages.map((_, index) => (0, exports.pageUrl)(sessionId, index))
+        };
+      };
+      exports.openArchiveSession = openArchiveSession;
+      var listImageKeys = (objectKeys) => objectKeys.filter((key) => isImagePath((0, archive_1.basename)(key)) && !(0, archive_1.isArchiveName)((0, archive_1.basename)(key))).sort(archive_1.naturalCompare);
+      exports.listImageKeys = listImageKeys;
+    }
+  });
+
   // __temp__/sources/r2-library/index.js
   var require_r2_library = __commonJS({
     "__temp__/sources/r2-library/index.js"(exports) {
@@ -3950,6 +4070,7 @@ var SourcePackage = (() => {
       var config_1 = require_config();
       var cover_1 = require_cover();
       var details_1 = require_details();
+      var pages_1 = require_pages();
       var r2_1 = require_r2();
       var rootPrefix = (prefix) => {
         const value = prefix.replace(/^\/+|\/+$/g, "");
@@ -4199,14 +4320,28 @@ var SourcePackage = (() => {
             const config = await (0, config_1.loadConfig)();
             const key = decodeURIComponent(chapterId);
             const bytes = await (0, r2_1.getObjectBytes)(config, key);
-            return (0, archive_1.extractArchivePages)(bytes).map((page) => ({ b64: page.b64 }));
+            const { urls } = (0, pages_1.openArchiveSession)(bytes);
+            return urls.map((url) => ({ url }));
+          });
+          /**
+           * Resolve session page URLs to data: URIs so Nuke never hits a fake host.
+           * Bytes stay in JSC until each page is actually requested.
+           * Accepts both NetworkRequest (new API) and bare URL string (older runtimes).
+           */
+          __publicField(this, "willRequestImage", async (request) => {
+            const url = typeof request === "string" ? request : request.url;
+            const dataUrl = (0, pages_1.dataUrlForPage)(url);
+            if (!dataUrl) {
+              return typeof request === "string" ? { url: request } : request;
+            }
+            return typeof request === "string" ? { url: dataUrl } : { ...request, url: dataUrl };
           });
         }
       };
       __publicField(Target, "info", {
         id: "en.r2-library",
         name: "R2 Library",
-        version: 1.4,
+        version: 1.5,
         website: "https://developers.cloudflare.com/r2/",
         thumbnail: "r2-library.png",
         languages: ["en"],
@@ -4224,7 +4359,7 @@ var SourcePackage = (() => {
       var runtime = require_runtime();
       var sourceModule = require_r2_library();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.4, "website": "https://developers.cloudflare.com/r2/", "thumbnail": "r2-library.png", "languages": ["en"], "rating": 0 };
+      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.5, "website": "https://developers.cloudflare.com/r2/", "thumbnail": "r2-library.png", "languages": ["en"], "rating": 0 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

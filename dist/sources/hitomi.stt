@@ -839,6 +839,28 @@ var SourcePackage = (() => {
     }
   });
 
+  // __temp__/sources/_shared/cloudflare.js
+  var require_cloudflare = __commonJS({
+    "__temp__/sources/_shared/cloudflare.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.originOf = exports.looksLikeCloudflare = exports.throwCloudflare = void 0;
+      var throwCloudflare = (resolutionURL) => {
+        throw new CloudflareError(resolutionURL);
+      };
+      exports.throwCloudflare = throwCloudflare;
+      var looksLikeCloudflare = (body) => /just a moment|cf-mitigated|challenge-platform|cdn-cgi\/challenge|cf-chl|cf-turnstile|challenges\.cloudflare\.com|attention required|verify you are human|checking your browser/i.test(body);
+      exports.looksLikeCloudflare = looksLikeCloudflare;
+      var originOf = (url) => {
+        const match = /^(https?:\/\/[^/?#]+)/i.exec(url);
+        return (match == null ? void 0 : match[1]) ? `${match[1]}/` : url;
+      };
+      exports.originOf = originOf;
+    }
+  });
+
   // __temp__/sources/_shared/http.js
   var require_http2 = __commonJS({
     "__temp__/sources/_shared/http.js"(exports) {
@@ -847,6 +869,7 @@ var SourcePackage = (() => {
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.withQuery = exports.joinUrl = exports.absoluteUrl = exports.getJson = exports.getText = exports.fetchBytesRange = exports.fetchBytes = exports.fetchJson = exports.postEmpty = exports.postForm = exports.fetchText = exports.http = void 0;
+      var cloudflare_1 = require_cloudflare();
       var client;
       var http = () => {
         if (!client) {
@@ -866,6 +889,7 @@ var SourcePackage = (() => {
         return Object.keys(headers).length ? headers : void 0;
       };
       var fetchText = async (url, options) => {
+        var _a;
         const response = await (0, exports.http)().request({
           url,
           method: "GET",
@@ -873,8 +897,13 @@ var SourcePackage = (() => {
           timeout: options == null ? void 0 : options.timeout
         });
         const body = await response.text();
-        if (/just a moment|cf-mitigated|challenge-platform|cdn-cgi\/challenge/i.test(body)) {
-          throw new Error(`Cloudflare challenge on ${url} \u2014 open the site in Suwatte to clear it, then retry.`);
+        if ((0, cloudflare_1.looksLikeCloudflare)(body) || response.headers.get("cf-mitigated")) {
+          (0, cloudflare_1.throwCloudflare)((0, cloudflare_1.originOf)(url));
+        }
+        if ([403, 503].includes(response.status)) {
+          const server = ((_a = response.headers.get("server")) != null ? _a : "").toLowerCase();
+          if (server.includes("cloudflare"))
+            (0, cloudflare_1.throwCloudflare)((0, cloudflare_1.originOf)(url));
         }
         if (!response.ok) {
           throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);

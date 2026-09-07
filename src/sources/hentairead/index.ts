@@ -39,8 +39,18 @@ import {
 } from "../_shared/network";
 
 const BASE = "https://hentairead.com";
-const CF_URL = `${BASE}/`;
 const MANGA = "hentai";
+/**
+ * Nested listing URL for CF Resolve WebView.
+ * Root `/` often paints a blank Turnstile shell in Suwatte's WKWebView;
+ * `/hentai/` is the real Madara listing Keiyoushi hits and completes better.
+ */
+const CF_RESOLVE = `${BASE}/hentai/?sortby=new`;
+const CF_PROBES = [
+  `${BASE}/hentai/?sortby=new`,
+  `${BASE}/hentai/`,
+  `${BASE}/`,
+];
 
 type PagesDto = {
   data: { chapter: { images: { src: string }[] } };
@@ -148,10 +158,9 @@ const parsePageRange = (
 
 /**
  * HentaiRead uses NetworkClient (no "use httpclient").
- * Suwatte's CF Resolve WebView writes cookies into HTTPCookieStorage /
- * AF session — the same jar NetworkClient uses. HttpClient keeps a separate
- * jar, and validateStatus:()=>true also disabled native CF throws (no modal).
- * Safari "Visit Website" never feeds either jar — use in-app Resolve.
+ * Suwatte CF Resolve writes cookies into HTTPCookieStorage.shared / AF —
+ * same jar NetworkClient uses. Resolve URL is the nested `/hentai/` listing
+ * (root `/` blacks out the challenge WebView).
  */
 export default class Target {
   client = createNetworkClient();
@@ -159,7 +168,7 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.hentairead",
     name: "HentaiRead",
-    version: 1.6,
+    version: 1.7,
     website: BASE,
     thumbnail: "hentairead.png",
     languages: ["en"],
@@ -168,25 +177,26 @@ export default class Target {
 
   getConfiguration = (): SourceConfiguration =>
     ({
-      imageReferer: CF_URL,
-      // Typed as SourceConfiguration but Suwatte still reads this for Resolve.
-      cloudflareResolutionURL: CF_URL,
+      imageReferer: `${BASE}/`,
+      // Nested path — Suwatte reads this when CloudflareError has no URL.
+      cloudflareResolutionURL: CF_RESOLVE,
     }) as SourceConfiguration;
 
-  private get = (url: string, referer = CF_URL) =>
+  private get = (url: string, referer = `${BASE}/`) =>
     netGetText(this.client, url, {
       referer,
-      cloudflareResolutionURL: CF_URL,
+      cloudflareResolutionURL: CF_RESOLVE,
     });
 
   private getJson = <T>(url: string) =>
     netGetJson<T>(this.client, url, {
-      referer: CF_URL,
-      cloudflareResolutionURL: CF_URL,
+      referer: `${BASE}/`,
+      cloudflareResolutionURL: CF_RESOLVE,
     });
 
   getHomePage = async (): Promise<HomePage> => {
-    await assertNetworkCloudflareCleared(this.client, CF_URL);
+    // Probe nested listing first, then root — always Resolve on nested URL.
+    await assertNetworkCloudflareCleared(this.client, CF_RESOLVE, CF_PROBES);
     return {
       feeds: [
         {

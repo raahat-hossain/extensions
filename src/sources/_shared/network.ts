@@ -1,8 +1,6 @@
 /**
- * NetworkClient helpers — uses AF + HTTPCookieStorage.shared, same jar as
- * Suwatte's Cloudflare Resolve WebView. Prefer this over HttpClient for
- * CF-protected sites; HttpClient keeps a separate jar and `validateStatus: () => true`
- * disables native CF detection.
+ * NetworkClient helpers — AF + HTTPCookieStorage.shared (same jar Suwatte's
+ * CF Resolve WebView writes into via Alamofire).
  */
 
 import {
@@ -17,6 +15,7 @@ export type NetFetchOptions = {
   headers?: Record<string, string>;
   referer?: string;
   timeout?: number;
+  /** Prefer a nested path — root `/` often blanks the CF WebView. */
   cloudflareResolutionURL?: string;
 };
 
@@ -58,7 +57,7 @@ const rethrowCloudflare = (error: unknown, resolutionURL: string): never => {
 export const createNetworkClient = (): InstanceType<typeof NetworkClient> =>
   new NetworkClient();
 
-/** GET text via NetworkClient; always rethrows CloudflareError with resolution URL. */
+/** GET text; always rethrows CloudflareError with the Resolve URL. */
 export const netGetText = async (
   client: InstanceType<typeof NetworkClient>,
   url: string,
@@ -99,15 +98,33 @@ export const netGetJson = async <T>(
 ): Promise<T> => JSON.parse(await netGetText(client, url, options)) as T;
 
 /**
- * Probe site root so CF Resolve appears before parallel homepage work.
- * NetworkClient auto-throws on 403/503+cloudflare; we attach the Resolve URL.
+ * Probe nested content path first, then root. Always throw with the nested
+ * Resolve URL so WKWebView loads a real page (not the blank root challenge).
  */
 export const assertNetworkCloudflareCleared = async (
   client: InstanceType<typeof NetworkClient>,
   resolutionURL: string,
+  probeURLs: string[] = [resolutionURL],
 ): Promise<void> => {
-  await netGetText(client, resolutionURL, {
-    cloudflareResolutionURL: resolutionURL,
-    timeout: 20_000,
-  });
+  const urls = probeURLs.length ? probeURLs : [resolutionURL];
+  for (const url of urls) {
+    try {
+      await netGetText(client, url, {
+        cloudflareResolutionURL: resolutionURL,
+        timeout: 20_000,
+      });
+      return;
+    } catch (error) {
+      const message = String((error as { message?: string })?.message ?? error);
+      const name = String((error as { name?: string })?.name ?? "");
+      if (
+        name.includes("Cloudflare") ||
+        message.includes("Cloudflare") ||
+        message.includes("cloudflare")
+      ) {
+        throwCloudflare(resolutionURL);
+      }
+    }
+  }
+  throwCloudflare(resolutionURL);
 };

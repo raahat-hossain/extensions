@@ -885,22 +885,37 @@ var SourcePackage = (() => {
         return false;
       };
       exports.cloudflareFromHeaders = cloudflareFromHeaders;
-      var assertCloudflareCleared = async (client, resolutionURL) => {
-        const response = await client.request({
-          url: resolutionURL,
-          method: "GET",
-          timeout: 2e4
-        });
-        if ((0, exports.cloudflareFromHeaders)(response.status, response.headers)) {
-          (0, exports.throwCloudflare)(resolutionURL);
+      var assertCloudflareCleared = async (client, resolutionURL, probeURLs = [resolutionURL]) => {
+        var _a, _b;
+        const urls = probeURLs.length ? probeURLs : [resolutionURL];
+        for (const url of urls) {
+          try {
+            const response = await client.request({
+              url,
+              method: "GET",
+              timeout: 2e4
+            });
+            if ((0, exports.cloudflareFromHeaders)(response.status, response.headers)) {
+              (0, exports.throwCloudflare)(resolutionURL);
+            }
+            const body = await response.text();
+            if ((0, exports.looksLikeCloudflare)(body) || (0, exports.cloudflareFromHeaders)(response.status, response.headers)) {
+              (0, exports.throwCloudflare)(resolutionURL);
+            }
+            if (!response.ok && header(response.headers, "server").includes("cloudflare")) {
+              (0, exports.throwCloudflare)(resolutionURL);
+            }
+            if (response.ok)
+              return;
+          } catch (error) {
+            const message = String((_a = error == null ? void 0 : error.message) != null ? _a : error);
+            const name = String((_b = error == null ? void 0 : error.name) != null ? _b : "");
+            if (name.includes("Cloudflare") || message.includes("Cloudflare") || message.includes("cloudflare")) {
+              (0, exports.throwCloudflare)(resolutionURL);
+            }
+          }
         }
-        const body = await response.text();
-        if ((0, exports.looksLikeCloudflare)(body) || (0, exports.cloudflareFromHeaders)(response.status, response.headers)) {
-          (0, exports.throwCloudflare)(resolutionURL);
-        }
-        if (!response.ok && header(response.headers, "server").includes("cloudflare")) {
-          (0, exports.throwCloudflare)(resolutionURL);
-        }
+        (0, exports.throwCloudflare)(resolutionURL);
       };
       exports.assertCloudflareCleared = assertCloudflareCleared;
     }

@@ -58,26 +58,55 @@ export const cloudflareFromHeaders = (
 };
 
 /**
- * Hit the site root once so Suwatte surfaces the CF modal before homepage
- * feeds fan out in parallel (which can strand the UI on a spinner).
+ * Hit one or more URLs so Suwatte surfaces the CF modal.
+ * Always throw with `resolutionURL` (prefer a nested content path — root `/`
+ * often renders a blank Turnstile shell in WKWebView).
  */
 export const assertCloudflareCleared = async (
   client: InstanceType<typeof HttpClient>,
   resolutionURL: string,
+  probeURLs: string[] = [resolutionURL],
 ): Promise<void> => {
-  const response = await client.request({
-    url: resolutionURL,
-    method: "GET",
-    timeout: 20_000,
-  });
-  if (cloudflareFromHeaders(response.status, response.headers)) {
-    throwCloudflare(resolutionURL);
+  const urls = probeURLs.length ? probeURLs : [resolutionURL];
+  for (const url of urls) {
+    try {
+      const response = await client.request({
+        url,
+        method: "GET",
+        timeout: 20_000,
+      });
+      if (cloudflareFromHeaders(response.status, response.headers)) {
+        throwCloudflare(resolutionURL);
+      }
+      const body = await response.text();
+      if (
+        looksLikeCloudflare(body) ||
+        cloudflareFromHeaders(response.status, response.headers)
+      ) {
+        throwCloudflare(resolutionURL);
+      }
+      if (
+        !response.ok &&
+        header(response.headers, "server").includes("cloudflare")
+      ) {
+        throwCloudflare(resolutionURL);
+      }
+      // Non-CF success on any probe → cookies are good.
+      if (response.ok) return;
+    } catch (error) {
+      const message = String((error as { message?: string })?.message ?? error);
+      const name = String((error as { name?: string })?.name ?? "");
+      if (
+        name.includes("Cloudflare") ||
+        message.includes("Cloudflare") ||
+        message.includes("cloudflare")
+      ) {
+        throwCloudflare(resolutionURL);
+      }
+      // Try next probe URL.
+    }
   }
-  const body = await response.text();
-  if (looksLikeCloudflare(body) || cloudflareFromHeaders(response.status, response.headers)) {
-    throwCloudflare(resolutionURL);
-  }
-  if (!response.ok && header(response.headers, "server").includes("cloudflare")) {
-    throwCloudflare(resolutionURL);
-  }
+  // Every probe failed without a clear CF signal — still force Resolve on the
+  // nested URL so the user isn't stuck on a black/empty source screen.
+  throwCloudflare(resolutionURL);
 };

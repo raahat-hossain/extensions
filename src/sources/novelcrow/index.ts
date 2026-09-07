@@ -13,6 +13,7 @@ import {
   type SourceConfiguration,
   type SourceInfo,
 } from "@suwatte/toolchain/types";
+import { createProtectedClient } from "../_shared/client";
 import {
   fetchMadaraChapters,
   fetchMadaraContent,
@@ -22,22 +23,27 @@ import {
   resolveMadara,
 } from "../_shared/madara";
 
-const cfg = resolveMadara({
-  baseUrl: "https://novelcrow.com",
-  mangaSubString: "comic",
-  useNewChapterEndpoint: true,
-  chapterUrlSuffix: "",
-  listViaSearch: true,
-  popularOrderBy: "trending",
-  latestOrderBy: "latest",
-});
+const BASE = "https://novelcrow.com";
 
 export default class Target {
+  client = createProtectedClient(`${BASE}/`);
+
+  #cfg = resolveMadara({
+    baseUrl: BASE,
+    mangaSubString: "comic",
+    useNewChapterEndpoint: true,
+    chapterUrlSuffix: "",
+    listViaSearch: true,
+    popularOrderBy: "trending",
+    latestOrderBy: "latest",
+    client: this.client,
+  });
+
   static info: SourceInfo = {
     id: "en.novelcrow",
     name: "NovelCrow",
-    version: 1.3,
-    website: cfg.baseUrl,
+    version: 1.4,
+    website: BASE,
     thumbnail: "novelcrow.png",
     languages: ["en"],
     rating: ContentRating.MATURE,
@@ -45,8 +51,9 @@ export default class Target {
 
   getConfiguration = (): SourceConfiguration =>
     ({
-      imageReferer: `${cfg.baseUrl}/`,
-      cloudflareResolutionURL: `${cfg.baseUrl}/`,
+      imageReferer: `${BASE}/`,
+      cloudflareResolutionURL: `${BASE}/`,
+      useClientForImageRequests: true,
     }) as SourceConfiguration;
 
   getHomePage = async (): Promise<HomePage> => ({
@@ -80,24 +87,32 @@ export default class Target {
     page: number,
   ): Promise<PagedItemList> => {
     const orderBy =
-      request.key === "latest" ? cfg.latestOrderBy : cfg.popularOrderBy;
-    return fetchListing(cfg, page, orderBy);
+      request.key === "latest"
+        ? this.#cfg.latestOrderBy
+        : this.#cfg.popularOrderBy;
+    return fetchListing(this.#cfg, page, orderBy);
   };
 
   getSearchResults = async (
     request: SearchRequest,
     page: number,
   ): Promise<PagedItemList> =>
-    fetchSearch(cfg, page, request.query?.trim() ?? "", request.sort?.key);
+    fetchSearch(
+      this.#cfg,
+      page,
+      request.query?.trim() ?? "",
+      request.sort?.key,
+    );
 
   getContent = async (contentId: string): Promise<Content> =>
-    fetchMadaraContent(cfg, contentId);
+    fetchMadaraContent(this.#cfg, contentId);
 
   getChapters = async (contentId: string): Promise<Chapter[]> =>
-    fetchMadaraChapters(cfg, contentId);
+    fetchMadaraChapters(this.#cfg, contentId);
 
   getChapterPages = async (
     contentId: string,
     chapterId: string,
-  ): Promise<ChapterPage[]> => fetchMadaraPages(cfg, contentId, chapterId);
+  ): Promise<ChapterPage[]> =>
+    fetchMadaraPages(this.#cfg, contentId, chapterId);
 }

@@ -27,12 +27,14 @@ import {
   metaContent,
   stripTags,
 } from "../_shared/html";
+import { createProtectedClient } from "../_shared/client";
 import {
   absoluteUrl,
   fetchJson,
   fetchText,
   joinUrl,
   withQuery,
+  type SourceHttpClient,
 } from "../_shared/http";
 import { matureItem } from "../_shared/item";
 
@@ -122,6 +124,7 @@ const listingUrl = (page: number, sortby: string): string => {
 };
 
 const getTagId = async (
+  client: SourceHttpClient,
   tag: string,
   type: string,
 ): Promise<number | undefined> => {
@@ -131,7 +134,11 @@ const getTagId = async (
     search: tag,
     taxonomy,
   });
-  const data = await fetchJson<TermResult>(url, { referer: `${BASE}/` });
+  const data = await fetchJson<TermResult>(url, {
+    client,
+    referer: `${BASE}/`,
+    cloudflareResolutionURL: `${BASE}/`,
+  });
   const hit = data.results.find(
     (item) => item.text.toLowerCase() === tag.toLowerCase(),
   );
@@ -161,10 +168,13 @@ const parsePageRange = (
 };
 
 export default class Target {
+  // Owned client so Suwatte can attach CF WebView cookies to THIS source.
+  client = createProtectedClient(`${BASE}/`);
+
   static info: SourceInfo = {
     id: "en.hentairead",
     name: "HentaiRead",
-    version: 1.3,
+    version: 1.4,
     website: BASE,
     thumbnail: "hentairead.png",
     languages: ["en"],
@@ -174,8 +184,9 @@ export default class Target {
   getConfiguration = (): SourceConfiguration =>
     ({
       imageReferer: `${BASE}/`,
-      // Suwatte opens this URL in a WebView when CloudflareError is thrown.
       cloudflareResolutionURL: `${BASE}/`,
+      // Route page/cover images through this.client (carries CF cookies).
+      useClientForImageRequests: true,
     }) as SourceConfiguration;
 
   getHomePage = async (): Promise<HomePage> => ({
@@ -250,7 +261,9 @@ export default class Target {
   ): Promise<PagedItemList> => {
     const sortby = request.key === "popular" ? "views" : "new";
     const html = await fetchText(listingUrl(page, sortby), {
+      client: this.client,
       referer: `${BASE}/`,
+      cloudflareResolutionURL: `${BASE}/`,
     });
     const items = parseListing(html);
     return { items, isLastPage: !hasNext(html) || items.length === 0 };
@@ -287,7 +300,7 @@ export default class Target {
       for (const part of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
         const exclude = part.startsWith("-");
         const name = exclude ? part.slice(1).trim() : part;
-        const id = await getTagId(name, type);
+        const id = await getTagId(this.client, name, type);
         if (id == null) {
           throw new Error(
             `${type.replace(/^manga_/, "").replace(/_/g, " ")} not found: ${name}`,
@@ -358,14 +371,22 @@ export default class Target {
       )
       .join("&");
     const url = query ? `${path}?${query}` : path;
-    const html = await fetchText(url, { referer: `${BASE}/` });
+    const html = await fetchText(url, {
+      client: this.client,
+      referer: `${BASE}/`,
+      cloudflareResolutionURL: `${BASE}/`,
+    });
     const items = parseListing(html);
     return { items, isLastPage: !hasNext(html) || items.length === 0 };
   };
 
   getContent = async (contentId: string): Promise<Content> => {
     const url = joinUrl(BASE, MANGA, contentId) + "/";
-    const html = await fetchText(url, { referer: `${BASE}/` });
+    const html = await fetchText(url, {
+      client: this.client,
+      referer: `${BASE}/`,
+      cloudflareResolutionURL: `${BASE}/`,
+    });
 
     const title =
       stripTags(
@@ -502,7 +523,9 @@ export default class Target {
   ): Promise<ChapterPage[]> => {
     const url = joinUrl(BASE, MANGA, contentId, "english", "p", "1") + "/";
     const html = await fetchText(url, {
+      client: this.client,
       referer: joinUrl(BASE, MANGA, contentId) + "/",
+      cloudflareResolutionURL: `${BASE}/`,
     });
 
     const extra =

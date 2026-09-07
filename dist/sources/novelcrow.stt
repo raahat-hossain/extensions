@@ -4,6 +4,9 @@ var global = globalThis;
 var SourcePackage = (() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __typeError = (msg) => {
+    throw TypeError(msg);
+  };
   var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
   var __esm = (fn, res) => function __init() {
     return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
@@ -12,6 +15,9 @@ var SourcePackage = (() => {
     return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
   };
   var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+  var __accessCheck = (obj, member, msg) => member.has(obj) || __typeError("Cannot " + msg);
+  var __privateGet = (obj, member, getter) => (__accessCheck(obj, member, "read from private field"), getter ? getter.call(obj) : member.get(obj));
+  var __privateAdd = (obj, member, value) => member.has(obj) ? __typeError("Cannot add the same private member more than once") : member instanceof WeakSet ? member.add(obj) : member.set(obj, value);
 
   // node_modules/esbuild-plugins-node-modules-polyfill/globals/process.js
   var init_process = __esm({
@@ -787,6 +793,35 @@ var SourcePackage = (() => {
     }
   });
 
+  // __temp__/sources/_shared/client.js
+  var require_client2 = __commonJS({
+    "__temp__/sources/_shared/client.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.createProtectedClient = exports.browserHeaders = exports.BROWSER_ACCEPT_LANGUAGE = exports.BROWSER_ACCEPT = void 0;
+      exports.BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
+      exports.BROWSER_ACCEPT_LANGUAGE = "en-US,en;q=0.9";
+      var browserHeaders = (extras = {}) => ({
+        Accept: exports.BROWSER_ACCEPT,
+        "Accept-Language": exports.BROWSER_ACCEPT_LANGUAGE,
+        ...extras
+      });
+      exports.browserHeaders = browserHeaders;
+      var createProtectedClient = (resolutionURL, extras = {}) => new HttpClient({
+        timeout: 45e3,
+        validateStatus: () => true,
+        cloudflareResolutionURL: resolutionURL,
+        headers: (0, exports.browserHeaders)({
+          Referer: resolutionURL.endsWith("/") ? resolutionURL : `${resolutionURL}/`,
+          ...extras
+        })
+      });
+      exports.createProtectedClient = createProtectedClient;
+    }
+  });
+
   // __temp__/sources/_shared/cloudflare.js
   var require_cloudflare = __commonJS({
     "__temp__/sources/_shared/cloudflare.js"(exports) {
@@ -818,17 +853,21 @@ var SourcePackage = (() => {
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.withQuery = exports.joinUrl = exports.absoluteUrl = exports.getJson = exports.getText = exports.fetchBytesRange = exports.fetchBytes = exports.fetchJson = exports.postEmpty = exports.postForm = exports.fetchText = exports.http = void 0;
       var cloudflare_1 = require_cloudflare();
-      var client;
+      var fallbackClient;
       var http = () => {
-        if (!client) {
-          client = new HttpClient({
+        if (!fallbackClient) {
+          fallbackClient = new HttpClient({
             timeout: 45e3,
             validateStatus: () => true
           });
         }
-        return client;
+        return fallbackClient;
       };
       exports.http = http;
+      var resolveClient = (options) => {
+        var _a;
+        return (_a = options == null ? void 0 : options.client) != null ? _a : (0, exports.http)();
+      };
       var mergeHeaders = (options) => {
         var _a;
         const headers = { ...(_a = options == null ? void 0 : options.headers) != null ? _a : {} };
@@ -836,23 +875,27 @@ var SourcePackage = (() => {
           headers.Referer = options.referer;
         return Object.keys(headers).length ? headers : void 0;
       };
-      var fetchText = async (url, options) => {
+      var assertNotCloudflare = (url, status, body, headers, resolutionURL) => {
         var _a;
-        const response = await (0, exports.http)().request({
+        const resolution = resolutionURL != null ? resolutionURL : (0, cloudflare_1.originOf)(url);
+        if ((0, cloudflare_1.looksLikeCloudflare)(body) || headers.get("cf-mitigated")) {
+          (0, cloudflare_1.throwCloudflare)(resolution);
+        }
+        if ([403, 503].includes(status)) {
+          const server = ((_a = headers.get("server")) != null ? _a : "").toLowerCase();
+          if (server.includes("cloudflare"))
+            (0, cloudflare_1.throwCloudflare)(resolution);
+        }
+      };
+      var fetchText = async (url, options) => {
+        const response = await resolveClient(options).request({
           url,
           method: "GET",
           headers: mergeHeaders(options),
           timeout: options == null ? void 0 : options.timeout
         });
         const body = await response.text();
-        if ((0, cloudflare_1.looksLikeCloudflare)(body) || response.headers.get("cf-mitigated")) {
-          (0, cloudflare_1.throwCloudflare)((0, cloudflare_1.originOf)(url));
-        }
-        if ([403, 503].includes(response.status)) {
-          const server = ((_a = response.headers.get("server")) != null ? _a : "").toLowerCase();
-          if (server.includes("cloudflare"))
-            (0, cloudflare_1.throwCloudflare)((0, cloudflare_1.originOf)(url));
-        }
+        assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
         if (!response.ok) {
           throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
         }
@@ -862,7 +905,7 @@ var SourcePackage = (() => {
       var postForm = async (url, fields, options) => {
         const entries = Array.isArray(fields) ? fields : Object.entries(fields);
         const body = entries.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join("&");
-        const response = await (0, exports.http)().request({
+        const response = await resolveClient(options).request({
           url,
           method: "POST",
           body,
@@ -872,6 +915,7 @@ var SourcePackage = (() => {
           }
         });
         const text = await response.text();
+        assertNotCloudflare(url, response.status, text, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
         if (!response.ok) {
           throw new Error(`POST ${url} failed (${response.status}): ${text.slice(0, 180)}`);
         }
@@ -879,7 +923,7 @@ var SourcePackage = (() => {
       };
       exports.postForm = postForm;
       var postEmpty = async (url, options) => {
-        const response = await (0, exports.http)().request({
+        const response = await resolveClient(options).request({
           url,
           method: "POST",
           headers: {
@@ -888,6 +932,7 @@ var SourcePackage = (() => {
           }
         });
         const text = await response.text();
+        assertNotCloudflare(url, response.status, text, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
         if (!response.ok) {
           throw new Error(`POST ${url} failed (${response.status}): ${text.slice(0, 180)}`);
         }
@@ -897,7 +942,8 @@ var SourcePackage = (() => {
       var fetchJson = async (url, options) => JSON.parse(await (0, exports.fetchText)(url, options));
       exports.fetchJson = fetchJson;
       var fetchBytes = async (url, options) => {
-        const response = await (0, exports.http)().request({
+        var _a;
+        const response = await resolveClient(options).request({
           url,
           method: "GET",
           headers: mergeHeaders(options),
@@ -905,7 +951,11 @@ var SourcePackage = (() => {
         });
         if (!response.ok) {
           const body = await response.text();
+          assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
           throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
+        }
+        if (response.headers.get("cf-mitigated")) {
+          (0, cloudflare_1.throwCloudflare)((_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url));
         }
         return response.bytes();
       };
@@ -916,7 +966,7 @@ var SourcePackage = (() => {
         if (range) {
           headers.Range = `bytes=${range.start}-${range.end}`;
         }
-        const response = await (0, exports.http)().request({
+        const response = await resolveClient(options).request({
           url,
           method: "GET",
           headers,
@@ -924,6 +974,7 @@ var SourcePackage = (() => {
         });
         if (!(response.ok || response.status === 206)) {
           const body = await response.text();
+          assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
           throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
         }
         return response.bytes();
@@ -1237,10 +1288,16 @@ var SourcePackage = (() => {
           searchItemSelector: (_h = config.searchItemSelector) != null ? _h : DEFAULTS.searchItemSelector,
           titleLinkSelector: (_i = config.titleLinkSelector) != null ? _i : DEFAULTS.titleLinkSelector,
           chapterListSelector: (_j = config.chapterListSelector) != null ? _j : DEFAULTS.chapterListSelector,
-          pageImageSelector: (_k = config.pageImageSelector) != null ? _k : DEFAULTS.pageImageSelector
+          pageImageSelector: (_k = config.pageImageSelector) != null ? _k : DEFAULTS.pageImageSelector,
+          client: config.client
         };
       };
       exports.resolveMadara = resolveMadara;
+      var fetchOpts = (cfg, referer) => ({
+        client: cfg.client,
+        referer: referer != null ? referer : `${cfg.baseUrl}/`,
+        cloudflareResolutionURL: `${cfg.baseUrl}/`
+      });
       var searchPage = (page) => page <= 1 ? "" : `page/${page}/`;
       var mangaUrl = (cfg, id) => {
         const decoded = safeDecode(id);
@@ -1373,17 +1430,13 @@ var SourcePackage = (() => {
       });
       exports.searchUrl = searchUrl;
       var fetchListing = async (cfg, page, orderBy) => {
-        const html = await (0, http_1.fetchText)((0, exports.listUrl)(cfg, page, orderBy), {
-          referer: `${cfg.baseUrl}/`
-        });
+        const html = await (0, http_1.fetchText)((0, exports.listUrl)(cfg, page, orderBy), fetchOpts(cfg));
         const items = (0, exports.parseListing)(cfg, html, cfg.itemSelector);
         return { items, isLastPage: !(0, exports.hasNextPage)(html) || items.length === 0 };
       };
       exports.fetchListing = fetchListing;
       var fetchSearch = async (cfg, page, query, orderBy) => {
-        const html = await (0, http_1.fetchText)((0, exports.searchUrl)(cfg, page, query, orderBy), {
-          referer: `${cfg.baseUrl}/`
-        });
+        const html = await (0, http_1.fetchText)((0, exports.searchUrl)(cfg, page, query, orderBy), fetchOpts(cfg));
         const items = (0, exports.parseListing)(cfg, html, query.trim() ? cfg.searchItemSelector : cfg.itemSelector);
         return { items, isLastPage: !(0, exports.hasNextPage)(html) || items.length === 0 };
       };
@@ -1409,7 +1462,7 @@ var SourcePackage = (() => {
       var fetchMadaraContent = async (cfg, contentId) => {
         var _a, _b, _c, _d, _e, _f, _g;
         const url = (0, exports.mangaUrl)(cfg, contentId);
-        const html = await (0, http_1.fetchText)(url, { referer: `${cfg.baseUrl}/` });
+        const html = await (0, http_1.fetchText)(url, fetchOpts(cfg));
         const title = (0, html_1.stripTags)((_b = (_a = (0, html_1.firstMatch)(html, /<(?:h1|h2|h3)\b[^>]*class=["'][^"']*post-title[^"']*["'][^>]*>([\s\S]*?)<\/(?:h1|h2|h3)>/i)) != null ? _a : (0, html_1.firstMatch)(html, /<h1\b[^>]*>([\s\S]*?)<\/h1>/i)) != null ? _b : "") || contentId;
         const authors = textsMatching(html, /<div[^>]*class=["'][^"']*author-content[^"']*["'][^>]*>[\s\S]*?<a\b[^>]*>([\s\S]*?)<\/a>/gi);
         const artists = textsMatching(html, /<div[^>]*class=["'][^"']*artist-content[^"']*["'][^>]*>[\s\S]*?<a\b[^>]*>([\s\S]*?)<\/a>/gi);
@@ -1531,7 +1584,7 @@ Alternative: ${alt}` : `Alternative: ${alt}`;
       var fetchMadaraChapters = async (cfg, contentId) => {
         var _a;
         const url = (0, exports.mangaUrl)(cfg, contentId);
-        let html = await (0, http_1.fetchText)(url, { referer: `${cfg.baseUrl}/` });
+        let html = await (0, http_1.fetchText)(url, fetchOpts(cfg));
         let chapters = parseChapterBlocks(cfg, html, contentId);
         if (chapters.length === 0) {
           const postId = (_a = (0, html_1.firstMatch)(html, /<div[^>]*id=["']manga-chapters-holder["'][^>]*data-id=["'](\d+)["']/i)) != null ? _a : (0, html_1.firstMatch)(html, /data-id=["'](\d+)["'][^>]*id=["']manga-chapters-holder/i);
@@ -1540,7 +1593,7 @@ Alternative: ${alt}` : `Alternative: ${alt}`;
             try {
               if (kind === "new") {
                 html = await (0, http_1.postEmpty)(`${url.replace(/\/+$/, "")}/ajax/chapters`, {
-                  referer: url,
+                  ...fetchOpts(cfg, url),
                   headers: { "X-Requested-With": "XMLHttpRequest" }
                 });
               } else if (postId) {
@@ -1548,7 +1601,7 @@ Alternative: ${alt}` : `Alternative: ${alt}`;
                   action: "manga_get_chapters",
                   manga: postId
                 }, {
-                  referer: `${cfg.baseUrl}/`,
+                  ...fetchOpts(cfg),
                   headers: { "X-Requested-With": "XMLHttpRequest" }
                 });
               } else {
@@ -1585,7 +1638,7 @@ Alternative: ${alt}` : `Alternative: ${alt}`;
       exports.chapterPageUrl = chapterPageUrl;
       var fetchMadaraPages = async (cfg, contentId, chapterId) => {
         const url = (0, exports.chapterPageUrl)(cfg, contentId, chapterId);
-        const html = await (0, http_1.fetchText)(url, { referer: (0, exports.mangaUrl)(cfg, contentId) });
+        const html = await (0, http_1.fetchText)(url, fetchOpts(cfg, (0, exports.mangaUrl)(cfg, contentId)));
         const pages = [];
         const imgTags = (0, html_1.allMatches)(html, /(<img\b[^>]*>)/gi);
         for (const tag of imgTags) {
@@ -1629,21 +1682,27 @@ Alternative: ${alt}` : `Alternative: ${alt}`;
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
       var types_1 = require_types();
+      var client_1 = require_client2();
       var madara_1 = require_madara();
-      var cfg = (0, madara_1.resolveMadara)({
-        baseUrl: "https://novelcrow.com",
-        mangaSubString: "comic",
-        useNewChapterEndpoint: true,
-        chapterUrlSuffix: "",
-        listViaSearch: true,
-        popularOrderBy: "trending",
-        latestOrderBy: "latest"
-      });
+      var BASE = "https://novelcrow.com";
+      var _cfg;
       var Target = class {
         constructor() {
+          __publicField(this, "client", (0, client_1.createProtectedClient)(`${BASE}/`));
+          __privateAdd(this, _cfg, (0, madara_1.resolveMadara)({
+            baseUrl: BASE,
+            mangaSubString: "comic",
+            useNewChapterEndpoint: true,
+            chapterUrlSuffix: "",
+            listViaSearch: true,
+            popularOrderBy: "trending",
+            latestOrderBy: "latest",
+            client: this.client
+          }));
           __publicField(this, "getConfiguration", () => ({
-            imageReferer: `${cfg.baseUrl}/`,
-            cloudflareResolutionURL: `${cfg.baseUrl}/`
+            imageReferer: `${BASE}/`,
+            cloudflareResolutionURL: `${BASE}/`,
+            useClientForImageRequests: true
           }));
           __publicField(this, "getHomePage", async () => ({
             feeds: [
@@ -1670,23 +1729,24 @@ Alternative: ${alt}` : `Alternative: ${alt}`;
             ]
           }));
           __publicField(this, "getItemList", async (request, page) => {
-            const orderBy = request.key === "latest" ? cfg.latestOrderBy : cfg.popularOrderBy;
-            return (0, madara_1.fetchListing)(cfg, page, orderBy);
+            const orderBy = request.key === "latest" ? __privateGet(this, _cfg).latestOrderBy : __privateGet(this, _cfg).popularOrderBy;
+            return (0, madara_1.fetchListing)(__privateGet(this, _cfg), page, orderBy);
           });
           __publicField(this, "getSearchResults", async (request, page) => {
             var _a, _b, _c;
-            return (0, madara_1.fetchSearch)(cfg, page, (_b = (_a = request.query) == null ? void 0 : _a.trim()) != null ? _b : "", (_c = request.sort) == null ? void 0 : _c.key);
+            return (0, madara_1.fetchSearch)(__privateGet(this, _cfg), page, (_b = (_a = request.query) == null ? void 0 : _a.trim()) != null ? _b : "", (_c = request.sort) == null ? void 0 : _c.key);
           });
-          __publicField(this, "getContent", async (contentId) => (0, madara_1.fetchMadaraContent)(cfg, contentId));
-          __publicField(this, "getChapters", async (contentId) => (0, madara_1.fetchMadaraChapters)(cfg, contentId));
-          __publicField(this, "getChapterPages", async (contentId, chapterId) => (0, madara_1.fetchMadaraPages)(cfg, contentId, chapterId));
+          __publicField(this, "getContent", async (contentId) => (0, madara_1.fetchMadaraContent)(__privateGet(this, _cfg), contentId));
+          __publicField(this, "getChapters", async (contentId) => (0, madara_1.fetchMadaraChapters)(__privateGet(this, _cfg), contentId));
+          __publicField(this, "getChapterPages", async (contentId, chapterId) => (0, madara_1.fetchMadaraPages)(__privateGet(this, _cfg), contentId, chapterId));
         }
       };
+      _cfg = new WeakMap();
       __publicField(Target, "info", {
         id: "en.novelcrow",
         name: "NovelCrow",
-        version: 1.3,
-        website: cfg.baseUrl,
+        version: 1.4,
+        website: BASE,
         thumbnail: "novelcrow.png",
         languages: ["en"],
         rating: types_1.ContentRating.MATURE
@@ -1703,7 +1763,7 @@ Alternative: ${alt}` : `Alternative: ${alt}`;
       var runtime = require_runtime();
       var sourceModule = require_novelcrow();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.novelcrow", "name": "NovelCrow", "version": 1.3, "website": "https://novelcrow.com", "thumbnail": "novelcrow.png", "languages": ["en"], "rating": 2 };
+      exports.SourceMetadata = { "id": "en.novelcrow", "name": "NovelCrow", "version": 1.4, "website": "https://novelcrow.com", "thumbnail": "novelcrow.png", "languages": ["en"], "rating": 2 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

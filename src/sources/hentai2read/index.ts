@@ -26,6 +26,7 @@ import {
   imageFromTag,
   stripTags,
 } from "../_shared/html";
+import { createProtectedClient } from "../_shared/client";
 import { absoluteUrl, fetchText, postForm } from "../_shared/http";
 import { matureItem } from "../_shared/item";
 import { CATEGORIES, TAGS } from "./tags";
@@ -130,19 +131,24 @@ const listLiTexts = (infoHtml: string, label: string): string[] => {
 };
 
 export default class Target {
+  client = createProtectedClient(`${BASE}/`);
+
   static info: SourceInfo = {
     id: "en.hentai2read",
     name: "Hentai2Read",
-    version: 1.2,
+    version: 1.3,
     website: BASE,
     thumbnail: "hentai2read.png",
     languages: ["en"],
     rating: ContentRating.MATURE,
   };
 
-  getConfiguration = (): SourceConfiguration => ({
-    imageReferer: `${BASE}/`,
-  });
+  getConfiguration = (): SourceConfiguration =>
+    ({
+      imageReferer: `${BASE}/`,
+      cloudflareResolutionURL: `${BASE}/`,
+      useClientForImageRequests: true,
+    }) as SourceConfiguration;
 
   getHomePage = async (): Promise<HomePage> => ({
     feeds: [
@@ -236,7 +242,7 @@ export default class Target {
     const sort =
       request.key === "latest" ? "last-updated" : "most-popular";
     const url = `${BASE}/hentai-list/all/any/all/${sort}/${page}/`;
-    const html = await fetchText(url, { referer: `${BASE}/` });
+    const html = await fetchText(url, { client: this.client, referer: `${BASE}/`, cloudflareResolutionURL: `${BASE}/` });
     const items = parseListing(html);
     return { items, isLastPage: !hasNext(html) || items.length === 0 };
   };
@@ -352,7 +358,9 @@ export default class Target {
       }
 
       html = await postForm(`${BASE}/hentai-list/advanced-search`, fields, {
+        client: this.client,
         referer: `${BASE}/`,
+        cloudflareResolutionURL: `${BASE}/`,
       });
 
       if (sortOrder) {
@@ -374,7 +382,9 @@ export default class Target {
         const target = sortHref ?? loose;
         if (target) {
           html = await fetchText(absoluteUrl(BASE, target), {
+            client: this.client,
             referer: `${BASE}/`,
+            cloudflareResolutionURL: `${BASE}/`,
           });
         }
       }
@@ -382,7 +392,7 @@ export default class Target {
       if (!nextSearchPage) {
         return { items: [], isLastPage: true };
       }
-      html = await fetchText(nextSearchPage, { referer: `${BASE}/` });
+      html = await fetchText(nextSearchPage, { client: this.client, referer: `${BASE}/`, cloudflareResolutionURL: `${BASE}/` });
     }
 
     const items = parseListing(html);
@@ -391,7 +401,7 @@ export default class Target {
 
   getContent = async (contentId: string): Promise<Content> => {
     const url = `${BASE}/${contentId}/`;
-    const html = await fetchText(url, { referer: `${BASE}/` });
+    const html = await fetchText(url, { client: this.client, referer: `${BASE}/`, cloudflareResolutionURL: `${BASE}/` });
 
     const title =
       stripTags(
@@ -481,7 +491,7 @@ export default class Target {
 
   getChapters = async (contentId: string): Promise<Chapter[]> => {
     const url = `${BASE}/${contentId}/`;
-    const html = await fetchText(url, { referer: `${BASE}/` });
+    const html = await fetchText(url, { client: this.client, referer: `${BASE}/`, cloudflareResolutionURL: `${BASE}/` });
     const list =
       firstMatch(
         html,
@@ -542,7 +552,7 @@ export default class Target {
     const url = chapterId.startsWith("http")
       ? chapterId
       : `${BASE}/${chapterId.replace(/^\/+/, "")}/`;
-    const html = await fetchText(url, { referer: `${BASE}/` });
+    const html = await fetchText(url, { client: this.client, referer: `${BASE}/`, cloudflareResolutionURL: `${BASE}/` });
     const pages: ChapterPage[] = [];
     const global = new RegExp(pagesUrlPattern.source, "g");
     let match: RegExpExecArray | null;

@@ -870,17 +870,21 @@ var SourcePackage = (() => {
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.withQuery = exports.joinUrl = exports.absoluteUrl = exports.getJson = exports.getText = exports.fetchBytesRange = exports.fetchBytes = exports.fetchJson = exports.postEmpty = exports.postForm = exports.fetchText = exports.http = void 0;
       var cloudflare_1 = require_cloudflare();
-      var client;
+      var fallbackClient;
       var http = () => {
-        if (!client) {
-          client = new HttpClient({
+        if (!fallbackClient) {
+          fallbackClient = new HttpClient({
             timeout: 45e3,
             validateStatus: () => true
           });
         }
-        return client;
+        return fallbackClient;
       };
       exports.http = http;
+      var resolveClient = (options) => {
+        var _a;
+        return (_a = options == null ? void 0 : options.client) != null ? _a : (0, exports.http)();
+      };
       var mergeHeaders = (options) => {
         var _a;
         const headers = { ...(_a = options == null ? void 0 : options.headers) != null ? _a : {} };
@@ -888,23 +892,27 @@ var SourcePackage = (() => {
           headers.Referer = options.referer;
         return Object.keys(headers).length ? headers : void 0;
       };
-      var fetchText = async (url, options) => {
+      var assertNotCloudflare = (url, status, body, headers, resolutionURL) => {
         var _a;
-        const response = await (0, exports.http)().request({
+        const resolution = resolutionURL != null ? resolutionURL : (0, cloudflare_1.originOf)(url);
+        if ((0, cloudflare_1.looksLikeCloudflare)(body) || headers.get("cf-mitigated")) {
+          (0, cloudflare_1.throwCloudflare)(resolution);
+        }
+        if ([403, 503].includes(status)) {
+          const server = ((_a = headers.get("server")) != null ? _a : "").toLowerCase();
+          if (server.includes("cloudflare"))
+            (0, cloudflare_1.throwCloudflare)(resolution);
+        }
+      };
+      var fetchText = async (url, options) => {
+        const response = await resolveClient(options).request({
           url,
           method: "GET",
           headers: mergeHeaders(options),
           timeout: options == null ? void 0 : options.timeout
         });
         const body = await response.text();
-        if ((0, cloudflare_1.looksLikeCloudflare)(body) || response.headers.get("cf-mitigated")) {
-          (0, cloudflare_1.throwCloudflare)((0, cloudflare_1.originOf)(url));
-        }
-        if ([403, 503].includes(response.status)) {
-          const server = ((_a = response.headers.get("server")) != null ? _a : "").toLowerCase();
-          if (server.includes("cloudflare"))
-            (0, cloudflare_1.throwCloudflare)((0, cloudflare_1.originOf)(url));
-        }
+        assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
         if (!response.ok) {
           throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
         }
@@ -914,7 +922,7 @@ var SourcePackage = (() => {
       var postForm = async (url, fields, options) => {
         const entries = Array.isArray(fields) ? fields : Object.entries(fields);
         const body = entries.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join("&");
-        const response = await (0, exports.http)().request({
+        const response = await resolveClient(options).request({
           url,
           method: "POST",
           body,
@@ -924,6 +932,7 @@ var SourcePackage = (() => {
           }
         });
         const text = await response.text();
+        assertNotCloudflare(url, response.status, text, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
         if (!response.ok) {
           throw new Error(`POST ${url} failed (${response.status}): ${text.slice(0, 180)}`);
         }
@@ -931,7 +940,7 @@ var SourcePackage = (() => {
       };
       exports.postForm = postForm;
       var postEmpty = async (url, options) => {
-        const response = await (0, exports.http)().request({
+        const response = await resolveClient(options).request({
           url,
           method: "POST",
           headers: {
@@ -940,6 +949,7 @@ var SourcePackage = (() => {
           }
         });
         const text = await response.text();
+        assertNotCloudflare(url, response.status, text, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
         if (!response.ok) {
           throw new Error(`POST ${url} failed (${response.status}): ${text.slice(0, 180)}`);
         }
@@ -949,7 +959,8 @@ var SourcePackage = (() => {
       var fetchJson = async (url, options) => JSON.parse(await (0, exports.fetchText)(url, options));
       exports.fetchJson = fetchJson;
       var fetchBytes = async (url, options) => {
-        const response = await (0, exports.http)().request({
+        var _a;
+        const response = await resolveClient(options).request({
           url,
           method: "GET",
           headers: mergeHeaders(options),
@@ -957,7 +968,11 @@ var SourcePackage = (() => {
         });
         if (!response.ok) {
           const body = await response.text();
+          assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
           throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
+        }
+        if (response.headers.get("cf-mitigated")) {
+          (0, cloudflare_1.throwCloudflare)((_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url));
         }
         return response.bytes();
       };
@@ -968,7 +983,7 @@ var SourcePackage = (() => {
         if (range) {
           headers.Range = `bytes=${range.start}-${range.end}`;
         }
-        const response = await (0, exports.http)().request({
+        const response = await resolveClient(options).request({
           url,
           method: "GET",
           headers,
@@ -976,6 +991,7 @@ var SourcePackage = (() => {
         });
         if (!(response.ok || response.status === 206)) {
           const body = await response.text();
+          assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
           throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
         }
         return response.bytes();

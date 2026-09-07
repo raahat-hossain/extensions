@@ -988,6 +988,35 @@ var SourcePackage = (() => {
     }
   });
 
+  // __temp__/sources/_shared/client.js
+  var require_client2 = __commonJS({
+    "__temp__/sources/_shared/client.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.createProtectedClient = exports.browserHeaders = exports.BROWSER_ACCEPT_LANGUAGE = exports.BROWSER_ACCEPT = void 0;
+      exports.BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
+      exports.BROWSER_ACCEPT_LANGUAGE = "en-US,en;q=0.9";
+      var browserHeaders = (extras = {}) => ({
+        Accept: exports.BROWSER_ACCEPT,
+        "Accept-Language": exports.BROWSER_ACCEPT_LANGUAGE,
+        ...extras
+      });
+      exports.browserHeaders = browserHeaders;
+      var createProtectedClient = (resolutionURL, extras = {}) => new HttpClient({
+        timeout: 45e3,
+        validateStatus: () => true,
+        cloudflareResolutionURL: resolutionURL,
+        headers: (0, exports.browserHeaders)({
+          Referer: resolutionURL.endsWith("/") ? resolutionURL : `${resolutionURL}/`,
+          ...extras
+        })
+      });
+      exports.createProtectedClient = createProtectedClient;
+    }
+  });
+
   // __temp__/sources/_shared/cloudflare.js
   var require_cloudflare = __commonJS({
     "__temp__/sources/_shared/cloudflare.js"(exports) {
@@ -1019,17 +1048,21 @@ var SourcePackage = (() => {
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.withQuery = exports.joinUrl = exports.absoluteUrl = exports.getJson = exports.getText = exports.fetchBytesRange = exports.fetchBytes = exports.fetchJson = exports.postEmpty = exports.postForm = exports.fetchText = exports.http = void 0;
       var cloudflare_1 = require_cloudflare();
-      var client;
+      var fallbackClient;
       var http = () => {
-        if (!client) {
-          client = new HttpClient({
+        if (!fallbackClient) {
+          fallbackClient = new HttpClient({
             timeout: 45e3,
             validateStatus: () => true
           });
         }
-        return client;
+        return fallbackClient;
       };
       exports.http = http;
+      var resolveClient = (options) => {
+        var _a;
+        return (_a = options == null ? void 0 : options.client) != null ? _a : (0, exports.http)();
+      };
       var mergeHeaders = (options) => {
         var _a;
         const headers = { ...(_a = options == null ? void 0 : options.headers) != null ? _a : {} };
@@ -1037,23 +1070,27 @@ var SourcePackage = (() => {
           headers.Referer = options.referer;
         return Object.keys(headers).length ? headers : void 0;
       };
-      var fetchText = async (url, options) => {
+      var assertNotCloudflare = (url, status, body, headers, resolutionURL) => {
         var _a;
-        const response = await (0, exports.http)().request({
+        const resolution = resolutionURL != null ? resolutionURL : (0, cloudflare_1.originOf)(url);
+        if ((0, cloudflare_1.looksLikeCloudflare)(body) || headers.get("cf-mitigated")) {
+          (0, cloudflare_1.throwCloudflare)(resolution);
+        }
+        if ([403, 503].includes(status)) {
+          const server = ((_a = headers.get("server")) != null ? _a : "").toLowerCase();
+          if (server.includes("cloudflare"))
+            (0, cloudflare_1.throwCloudflare)(resolution);
+        }
+      };
+      var fetchText = async (url, options) => {
+        const response = await resolveClient(options).request({
           url,
           method: "GET",
           headers: mergeHeaders(options),
           timeout: options == null ? void 0 : options.timeout
         });
         const body = await response.text();
-        if ((0, cloudflare_1.looksLikeCloudflare)(body) || response.headers.get("cf-mitigated")) {
-          (0, cloudflare_1.throwCloudflare)((0, cloudflare_1.originOf)(url));
-        }
-        if ([403, 503].includes(response.status)) {
-          const server = ((_a = response.headers.get("server")) != null ? _a : "").toLowerCase();
-          if (server.includes("cloudflare"))
-            (0, cloudflare_1.throwCloudflare)((0, cloudflare_1.originOf)(url));
-        }
+        assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
         if (!response.ok) {
           throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
         }
@@ -1063,7 +1100,7 @@ var SourcePackage = (() => {
       var postForm = async (url, fields, options) => {
         const entries = Array.isArray(fields) ? fields : Object.entries(fields);
         const body = entries.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join("&");
-        const response = await (0, exports.http)().request({
+        const response = await resolveClient(options).request({
           url,
           method: "POST",
           body,
@@ -1073,6 +1110,7 @@ var SourcePackage = (() => {
           }
         });
         const text = await response.text();
+        assertNotCloudflare(url, response.status, text, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
         if (!response.ok) {
           throw new Error(`POST ${url} failed (${response.status}): ${text.slice(0, 180)}`);
         }
@@ -1080,7 +1118,7 @@ var SourcePackage = (() => {
       };
       exports.postForm = postForm;
       var postEmpty = async (url, options) => {
-        const response = await (0, exports.http)().request({
+        const response = await resolveClient(options).request({
           url,
           method: "POST",
           headers: {
@@ -1089,6 +1127,7 @@ var SourcePackage = (() => {
           }
         });
         const text = await response.text();
+        assertNotCloudflare(url, response.status, text, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
         if (!response.ok) {
           throw new Error(`POST ${url} failed (${response.status}): ${text.slice(0, 180)}`);
         }
@@ -1098,7 +1137,8 @@ var SourcePackage = (() => {
       var fetchJson = async (url, options) => JSON.parse(await (0, exports.fetchText)(url, options));
       exports.fetchJson = fetchJson;
       var fetchBytes = async (url, options) => {
-        const response = await (0, exports.http)().request({
+        var _a;
+        const response = await resolveClient(options).request({
           url,
           method: "GET",
           headers: mergeHeaders(options),
@@ -1106,7 +1146,11 @@ var SourcePackage = (() => {
         });
         if (!response.ok) {
           const body = await response.text();
+          assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
           throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
+        }
+        if (response.headers.get("cf-mitigated")) {
+          (0, cloudflare_1.throwCloudflare)((_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url));
         }
         return response.bytes();
       };
@@ -1117,7 +1161,7 @@ var SourcePackage = (() => {
         if (range) {
           headers.Range = `bytes=${range.start}-${range.end}`;
         }
-        const response = await (0, exports.http)().request({
+        const response = await resolveClient(options).request({
           url,
           method: "GET",
           headers,
@@ -1125,6 +1169,7 @@ var SourcePackage = (() => {
         });
         if (!(response.ok || response.status === 206)) {
           const body = await response.text();
+          assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
           throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
         }
         return response.bytes();
@@ -1628,6 +1673,7 @@ var SourcePackage = (() => {
       Object.defineProperty(exports, "__esModule", { value: true });
       var types_1 = require_types();
       var html_1 = require_html();
+      var client_1 = require_client2();
       var http_1 = require_http2();
       var item_1 = require_item2();
       var tags_1 = require_tags();
@@ -1722,8 +1768,11 @@ var SourcePackage = (() => {
       };
       var Target = class {
         constructor() {
+          __publicField(this, "client", (0, client_1.createProtectedClient)(`${BASE}/`));
           __publicField(this, "getConfiguration", () => ({
-            imageReferer: `${BASE}/`
+            imageReferer: `${BASE}/`,
+            cloudflareResolutionURL: `${BASE}/`,
+            useClientForImageRequests: true
           }));
           __publicField(this, "getHomePage", async () => ({
             feeds: [
@@ -1786,7 +1835,7 @@ var SourcePackage = (() => {
           __publicField(this, "getItemList", async (request, page) => {
             const sort = request.key === "latest" ? "last-updated" : "most-popular";
             const url = `${BASE}/hentai-list/all/any/all/${sort}/${page}/`;
-            const html = await (0, http_1.fetchText)(url, { referer: `${BASE}/` });
+            const html = await (0, http_1.fetchText)(url, { client: this.client, referer: `${BASE}/`, cloudflareResolutionURL: `${BASE}/` });
             const items = parseListing(html);
             return { items, isLastPage: !hasNext(html) || items.length === 0 };
           });
@@ -1885,7 +1934,9 @@ var SourcePackage = (() => {
                 fields.push(["chk_wpm_pag_mng_sch_mng_tag_exc[]", id]);
               }
               html = await (0, http_1.postForm)(`${BASE}/hentai-list/advanced-search`, fields, {
-                referer: `${BASE}/`
+                client: this.client,
+                referer: `${BASE}/`,
+                cloudflareResolutionURL: `${BASE}/`
               });
               if (sortOrder) {
                 const sortHref = (0, html_1.firstMatch)(html, new RegExp(`<li\\b[^>]*class=["'][^"']*dropdown[^"']*["'][^>]*>[\\s\\S]*?<a\\b[^>]*href=["']([^"']+)["'][^>]*>\\s*${sortOrder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i"));
@@ -1893,7 +1944,9 @@ var SourcePackage = (() => {
                 const target = sortHref != null ? sortHref : loose;
                 if (target) {
                   html = await (0, http_1.fetchText)((0, http_1.absoluteUrl)(BASE, target), {
-                    referer: `${BASE}/`
+                    client: this.client,
+                    referer: `${BASE}/`,
+                    cloudflareResolutionURL: `${BASE}/`
                   });
                 }
               }
@@ -1901,7 +1954,7 @@ var SourcePackage = (() => {
               if (!nextSearchPage) {
                 return { items: [], isLastPage: true };
               }
-              html = await (0, http_1.fetchText)(nextSearchPage, { referer: `${BASE}/` });
+              html = await (0, http_1.fetchText)(nextSearchPage, { client: this.client, referer: `${BASE}/`, cloudflareResolutionURL: `${BASE}/` });
             }
             const items = parseListing(html);
             return { items, isLastPage: !hasNext(html) || items.length === 0 };
@@ -1909,7 +1962,7 @@ var SourcePackage = (() => {
           __publicField(this, "getContent", async (contentId) => {
             var _a, _b, _c, _d, _e, _f;
             const url = `${BASE}/${contentId}/`;
-            const html = await (0, http_1.fetchText)(url, { referer: `${BASE}/` });
+            const html = await (0, http_1.fetchText)(url, { client: this.client, referer: `${BASE}/`, cloudflareResolutionURL: `${BASE}/` });
             const title = (0, html_1.stripTags)((_b = (_a = (0, html_1.firstMatch)(html, /<h3\b[^>]*class=["'][^"']*block-title[^"']*["'][^>]*>\s*<i\b[^>]*fa-book[^>]*>[\s\S]*?<a\b[^>]*>([\s\S]*?)<(?:small|\/a)/i)) != null ? _a : (0, html_1.firstMatch)(html, new RegExp(`<h3\\b[^>]*class=["'][^"']*block-title[^"']*["'][^>]*>[\\s\\S]*?<a\\b[^>]*href=["'][^"']*/${contentId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/["'][^>]*>([\\s\\S]*?)<(?:small|\\/a)`, "i"))) != null ? _b : "") || contentId;
             const info = (_c = (0, html_1.firstMatch)(html, /(<ul\b[^>]*class=["'][^"']*list-simple-mini[^"']*["'][^>]*>[\s\S]*?<\/ul>)/i)) != null ? _c : "";
             const author = listLiTexts(info, "Author").join(", ") || void 0;
@@ -1965,7 +2018,7 @@ ${values.join(", ")}`);
           __publicField(this, "getChapters", async (contentId) => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _i;
             const url = `${BASE}/${contentId}/`;
-            const html = await (0, http_1.fetchText)(url, { referer: `${BASE}/` });
+            const html = await (0, http_1.fetchText)(url, { client: this.client, referer: `${BASE}/`, cloudflareResolutionURL: `${BASE}/` });
             const list = (_a = (0, html_1.firstMatch)(html, /(<ul\b[^>]*class=["'][^"']*nav-chapters[^"']*["'][^>]*>[\s\S]*?<\/ul>)/i)) != null ? _a : "";
             const chapters = [];
             const items = (0, html_1.collectBlocks)(list, /<li\b[^>]*>/gi, "li");
@@ -1996,7 +2049,7 @@ ${values.join(", ")}`);
           __publicField(this, "getChapterPages", async (_contentId, chapterId) => {
             var _a;
             const url = chapterId.startsWith("http") ? chapterId : `${BASE}/${chapterId.replace(/^\/+/, "")}/`;
-            const html = await (0, http_1.fetchText)(url, { referer: `${BASE}/` });
+            const html = await (0, http_1.fetchText)(url, { client: this.client, referer: `${BASE}/`, cloudflareResolutionURL: `${BASE}/` });
             const pages = [];
             const global = new RegExp(pagesUrlPattern.source, "g");
             let match;
@@ -2018,7 +2071,7 @@ ${values.join(", ")}`);
       __publicField(Target, "info", {
         id: "en.hentai2read",
         name: "Hentai2Read",
-        version: 1.2,
+        version: 1.3,
         website: BASE,
         thumbnail: "hentai2read.png",
         languages: ["en"],
@@ -2045,7 +2098,7 @@ ${values.join(", ")}`);
       var runtime = require_runtime();
       var sourceModule = require_hentai2read();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.hentai2read", "name": "Hentai2Read", "version": 1.2, "website": "https://hentai2read.com", "thumbnail": "hentai2read.png", "languages": ["en"], "rating": 2 };
+      exports.SourceMetadata = { "id": "en.hentai2read", "name": "Hentai2Read", "version": 1.3, "website": "https://hentai2read.com", "thumbnail": "hentai2read.png", "languages": ["en"], "rating": 2 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

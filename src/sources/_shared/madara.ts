@@ -14,6 +14,7 @@ import {
   postEmpty,
   postForm,
   withQuery,
+  type SourceHttpClient,
 } from "./http";
 import {
   allMatches,
@@ -40,6 +41,8 @@ export type MadaraConfig = {
   titleLinkSelector?: string;
   chapterListSelector?: string;
   pageImageSelector?: string;
+  /** Source-owned HttpClient so Cloudflare cookies stick. */
+  client?: SourceHttpClient;
 };
 
 const DEFAULTS = {
@@ -58,7 +61,9 @@ const DEFAULTS = {
     "div.page-break|li.blocks-gallery-item|div.reading-content img",
 };
 
-export type ResolvedMadara = Required<MadaraConfig>;
+export type ResolvedMadara = Required<Omit<MadaraConfig, "client">> & {
+  client?: SourceHttpClient;
+};
 
 export const resolveMadara = (config: MadaraConfig): ResolvedMadara => ({
   baseUrl: config.baseUrl.replace(/\/+$/, ""),
@@ -75,8 +80,14 @@ export const resolveMadara = (config: MadaraConfig): ResolvedMadara => ({
   chapterListSelector:
     config.chapterListSelector ?? DEFAULTS.chapterListSelector,
   pageImageSelector: config.pageImageSelector ?? DEFAULTS.pageImageSelector,
+  client: config.client,
 });
 
+const fetchOpts = (cfg: ResolvedMadara, referer?: string) => ({
+  client: cfg.client,
+  referer: referer ?? `${cfg.baseUrl}/`,
+  cloudflareResolutionURL: `${cfg.baseUrl}/`,
+});
 const searchPage = (page: number): string =>
   page <= 1 ? "" : `page/${page}/`;
 
@@ -253,9 +264,7 @@ export const fetchListing = async (
   page: number,
   orderBy: string,
 ): Promise<PagedItemList> => {
-  const html = await fetchText(listUrl(cfg, page, orderBy), {
-    referer: `${cfg.baseUrl}/`,
-  });
+  const html = await fetchText(listUrl(cfg, page, orderBy), fetchOpts(cfg));
   const items = parseListing(cfg, html, cfg.itemSelector);
   return { items, isLastPage: !hasNextPage(html) || items.length === 0 };
 };
@@ -266,9 +275,10 @@ export const fetchSearch = async (
   query: string,
   orderBy?: string,
 ): Promise<PagedItemList> => {
-  const html = await fetchText(searchUrl(cfg, page, query, orderBy), {
-    referer: `${cfg.baseUrl}/`,
-  });
+  const html = await fetchText(
+    searchUrl(cfg, page, query, orderBy),
+    fetchOpts(cfg),
+  );
   const items = parseListing(
     cfg,
     html,
@@ -300,7 +310,7 @@ export const fetchMadaraContent = async (
   contentId: string,
 ): Promise<Content> => {
   const url = mangaUrl(cfg, contentId);
-  const html = await fetchText(url, { referer: `${cfg.baseUrl}/` });
+  const html = await fetchText(url, fetchOpts(cfg));
 
   const title =
     stripTags(
@@ -501,7 +511,7 @@ export const fetchMadaraChapters = async (
   contentId: string,
 ): Promise<Chapter[]> => {
   const url = mangaUrl(cfg, contentId);
-  let html = await fetchText(url, { referer: `${cfg.baseUrl}/` });
+  let html = await fetchText(url, fetchOpts(cfg));
   let chapters = parseChapterBlocks(cfg, html, contentId);
 
   if (chapters.length === 0) {
@@ -519,7 +529,7 @@ export const fetchMadaraChapters = async (
       try {
         if (kind === "new") {
           html = await postEmpty(`${url.replace(/\/+$/, "")}/ajax/chapters`, {
-            referer: url,
+            ...fetchOpts(cfg, url),
             headers: { "X-Requested-With": "XMLHttpRequest" },
           });
         } else if (postId) {
@@ -530,7 +540,7 @@ export const fetchMadaraChapters = async (
               manga: postId,
             },
             {
-              referer: `${cfg.baseUrl}/`,
+              ...fetchOpts(cfg),
               headers: { "X-Requested-With": "XMLHttpRequest" },
             },
           );
@@ -576,7 +586,7 @@ export const fetchMadaraPages = async (
   chapterId: string,
 ): Promise<ChapterPage[]> => {
   const url = chapterPageUrl(cfg, contentId, chapterId);
-  const html = await fetchText(url, { referer: mangaUrl(cfg, contentId) });
+  const html = await fetchText(url, fetchOpts(cfg, mangaUrl(cfg, contentId)));
 
   const pages: string[] = [];
   const imgTags = allMatches(html, /(<img\b[^>]*>)/gi);

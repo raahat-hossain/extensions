@@ -1406,16 +1406,16 @@ var SourcePackage = (() => {
       var types_1 = require_types();
       var html_1 = require_html();
       var http_1 = require_http2();
+      var cloudflare_1 = require_cloudflare();
       var item_1 = require_item2();
       var network_1 = require_network();
       var BASE = "https://hentairead.com";
       var MANGA = "hentai";
       var CF_RESOLVE = `${BASE}/hentai/?sortby=new`;
-      var CF_PROBES = [
-        `${BASE}/hentai/?sortby=new`,
-        `${BASE}/hentai/`,
-        `${BASE}/`
-      ];
+      var SETTINGS = {
+        forceResolve: "force_cf_resolve",
+        resetSession: "reset_cf_session"
+      };
       var chapterExtraDataRegex = /= (\{[^;]+)/;
       var pagesDataRegex = /.(ey\S+).\s/;
       var capitalizeEach = (value) => value.split(" ").map((word) => word ? word.charAt(0).toUpperCase() + word.slice(1) : word).join(" ");
@@ -1489,9 +1489,49 @@ var SourcePackage = (() => {
           __publicField(this, "client", (0, network_1.createNetworkClient)());
           __publicField(this, "getConfiguration", () => ({
             imageReferer: `${BASE}/`,
-            // Nested path — Suwatte reads this when CloudflareError has no URL.
             cloudflareResolutionURL: CF_RESOLVE
           }));
+          __publicField(this, "getSettingsPage", async () => {
+            const forceResolve = !!await ObjectStore.boolean(SETTINGS.forceResolve);
+            return {
+              sections: [
+                {
+                  header: "Cloudflare",
+                  footer: "Sources cannot wipe Suwatte's cookie jar. To clear cache/cookies: Suwatte \u2192 Settings \u2192 Clear Cookies and Clear Network Cache, then enable Force Resolve below (Submit) and reopen the source. Source Availability tests always abort on CF by design \u2014 use Browse \u2192 Resolve & Retry instead.",
+                  views: [
+                    (0, types_1.UIWebViewButton)({
+                      title: "Open Challenge Page",
+                      url: { url: CF_RESOLVE }
+                    }),
+                    (0, types_1.UIToggle)({
+                      id: SETTINGS.forceResolve,
+                      title: "Force Resolve on next open",
+                      currentValue: forceResolve
+                    }),
+                    (0, types_1.UIToggle)({
+                      id: SETTINGS.resetSession,
+                      title: "Reset CF session (request Resolve)",
+                      currentValue: false,
+                      defaultValue: false
+                    })
+                  ]
+                }
+              ]
+            };
+          });
+          __publicField(this, "onFormSubmitted", async (_id, data) => {
+            const force = !!data[SETTINGS.forceResolve];
+            const reset = !!data[SETTINGS.resetSession];
+            if (force || reset) {
+              await ObjectStore.set(SETTINGS.forceResolve, true);
+            } else {
+              await ObjectStore.remove(SETTINGS.forceResolve);
+            }
+          });
+          /** Closest thing to "clear auth/session" — forces Resolve next open. */
+          __publicField(this, "clearAuthentication", async () => {
+            await ObjectStore.set(SETTINGS.forceResolve, true);
+          });
           __publicField(this, "get", (url, referer = `${BASE}/`) => (0, network_1.netGetText)(this.client, url, {
             referer,
             cloudflareResolutionURL: CF_RESOLVE
@@ -1500,8 +1540,15 @@ var SourcePackage = (() => {
             referer: `${BASE}/`,
             cloudflareResolutionURL: CF_RESOLVE
           }));
+          __publicField(this, "consumeForceResolve", async () => {
+            const force = await ObjectStore.boolean(SETTINGS.forceResolve);
+            if (!force)
+              return;
+            await ObjectStore.remove(SETTINGS.forceResolve);
+            (0, cloudflare_1.throwCloudflare)(CF_RESOLVE);
+          });
           __publicField(this, "getHomePage", async () => {
-            await (0, network_1.assertNetworkCloudflareCleared)(this.client, CF_RESOLVE, CF_PROBES);
+            await this.consumeForceResolve();
             return {
               feeds: [
                 {
@@ -1752,7 +1799,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       __publicField(Target, "info", {
         id: "en.hentairead",
         name: "HentaiRead",
-        version: 1.7,
+        version: 1.8,
         website: BASE,
         thumbnail: "hentairead.png",
         languages: ["en"],
@@ -1770,7 +1817,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       var runtime = require_runtime();
       var sourceModule = require_hentairead();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.hentairead", "name": "HentaiRead", "version": 1.7, "website": "https://hentairead.com", "thumbnail": "hentairead.png", "languages": ["en"], "rating": 2 };
+      exports.SourceMetadata = { "id": "en.hentairead", "name": "HentaiRead", "version": 1.8, "website": "https://hentairead.com", "thumbnail": "hentairead.png", "languages": ["en"], "rating": 2 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

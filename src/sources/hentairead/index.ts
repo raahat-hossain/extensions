@@ -4,16 +4,20 @@ import {
   SearchFilter,
   SelectFilter,
   TextFilter,
+  UIToggle,
+  UIWebViewButton,
   type Chapter,
   type ChapterPage,
   type Content,
   type HomePage,
   type ItemListRequest,
   type PagedItemList,
+  type PopulatedForm,
   type SearchRequest,
   type SortOptions,
   type SourceConfiguration,
   type SourceInfo,
+  type UIForm,
 } from "@suwatte/toolchain/types";
 import {
   allMatches,
@@ -30,9 +34,9 @@ import {
   joinUrl,
   withQuery,
 } from "../_shared/http";
+import { throwCloudflare } from "../_shared/cloudflare";
 import { matureItem } from "../_shared/item";
 import {
-  assertNetworkCloudflareCleared,
   createNetworkClient,
   netGetJson,
   netGetText,
@@ -46,11 +50,11 @@ const MANGA = "hentai";
  * `/hentai/` is the real Madara listing Keiyoushi hits and completes better.
  */
 const CF_RESOLVE = `${BASE}/hentai/?sortby=new`;
-const CF_PROBES = [
-  `${BASE}/hentai/?sortby=new`,
-  `${BASE}/hentai/`,
-  `${BASE}/`,
-];
+
+const SETTINGS = {
+  forceResolve: "force_cf_resolve",
+  resetSession: "reset_cf_session",
+} as const;
 
 type PagesDto = {
   data: { chapter: { images: { src: string }[] } };
@@ -161,6 +165,10 @@ const parsePageRange = (
  * Suwatte CF Resolve writes cookies into HTTPCookieStorage.shared / AF —
  * same jar NetworkClient uses. Resolve URL is the nested `/hentai/` listing
  * (root `/` blacks out the challenge WebView).
+ *
+ * Sources cannot clear Suwatte's cookie jar — that's app Settings →
+ * Clear Cookies / Clear Network Cache. Extension settings expose Force Resolve
+ * + a challenge WebView button as the closest workaround.
  */
 export default class Target {
   client = createNetworkClient();
@@ -168,7 +176,7 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.hentairead",
     name: "HentaiRead",
-    version: 1.7,
+    version: 1.8,
     website: BASE,
     thumbnail: "hentairead.png",
     languages: ["en"],
@@ -178,9 +186,56 @@ export default class Target {
   getConfiguration = (): SourceConfiguration =>
     ({
       imageReferer: `${BASE}/`,
-      // Nested path — Suwatte reads this when CloudflareError has no URL.
       cloudflareResolutionURL: CF_RESOLVE,
     }) as SourceConfiguration;
+
+  getSettingsPage = async (): Promise<UIForm> => {
+    const forceResolve = !!(await ObjectStore.boolean(SETTINGS.forceResolve));
+    return {
+      sections: [
+        {
+          header: "Cloudflare",
+          footer:
+            "Sources cannot wipe Suwatte's cookie jar. To clear cache/cookies: Suwatte → Settings → Clear Cookies and Clear Network Cache, then enable Force Resolve below (Submit) and reopen the source. Source Availability tests always abort on CF by design — use Browse → Resolve & Retry instead.",
+          views: [
+            UIWebViewButton({
+              title: "Open Challenge Page",
+              url: { url: CF_RESOLVE },
+            }),
+            UIToggle({
+              id: SETTINGS.forceResolve,
+              title: "Force Resolve on next open",
+              currentValue: forceResolve,
+            }),
+            UIToggle({
+              id: SETTINGS.resetSession,
+              title: "Reset CF session (request Resolve)",
+              currentValue: false,
+              defaultValue: false,
+            }),
+          ],
+        },
+      ],
+    };
+  };
+
+  onFormSubmitted = async (
+    _id: string,
+    data: PopulatedForm,
+  ): Promise<void> => {
+    const force = !!(data[SETTINGS.forceResolve] as boolean | undefined);
+    const reset = !!(data[SETTINGS.resetSession] as boolean | undefined);
+    if (force || reset) {
+      await ObjectStore.set(SETTINGS.forceResolve, true);
+    } else {
+      await ObjectStore.remove(SETTINGS.forceResolve);
+    }
+  };
+
+  /** Closest thing to "clear auth/session" — forces Resolve next open. */
+  clearAuthentication = async (): Promise<void> => {
+    await ObjectStore.set(SETTINGS.forceResolve, true);
+  };
 
   private get = (url: string, referer = `${BASE}/`) =>
     netGetText(this.client, url, {
@@ -194,9 +249,18 @@ export default class Target {
       cloudflareResolutionURL: CF_RESOLVE,
     });
 
+  private consumeForceResolve = async (): Promise<void> => {
+    const force = await ObjectStore.boolean(SETTINGS.forceResolve);
+    if (!force) return;
+    await ObjectStore.remove(SETTINGS.forceResolve);
+    throwCloudflare(CF_RESOLVE);
+  };
+
   getHomePage = async (): Promise<HomePage> => {
-    // Probe nested listing first, then root — always Resolve on nested URL.
-    await assertNetworkCloudflareCleared(this.client, CF_RESOLVE, CF_PROBES);
+    // Do NOT probe CF here — Source Availability aborts Home Page on CF, and
+    // throwing before feeds mount can black-screen. CF is enforced on listing
+    // fetches (and via Force Resolve from settings).
+    await this.consumeForceResolve();
     return {
       feeds: [
         {

@@ -21,8 +21,10 @@ export const browserHeaders = (
 
 /**
  * HttpClient owned by a source class (`this.client`).
- * Suwatte attaches Cloudflare WebView cookies to this instance — a module-level
- * singleton never sees them, which is why CF kept failing after resolve.
+ *
+ * Do NOT set validateStatus: () => true — that skips HttpClient's native
+ * CloudflareError throw (no Resolve modal). Prefer NetworkClient for heavily
+ * CF-gated sites; its jar matches the Resolve WebView cookie store.
  */
 export const createProtectedClient = (
   resolutionURL: string,
@@ -30,7 +32,6 @@ export const createProtectedClient = (
 ): InstanceType<typeof HttpClient> =>
   new HttpClient({
     timeout: 45_000,
-    validateStatus: () => true,
     cloudflareResolutionURL: resolutionURL,
     headers: browserHeaders({
       Referer: resolutionURL.endsWith("/")

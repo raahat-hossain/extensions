@@ -1,5 +1,3 @@
-"use httpclient";
-
 import {
   ContentRating,
   ContentStatus,
@@ -27,19 +25,21 @@ import {
   metaContent,
   stripTags,
 } from "../_shared/html";
-import { createProtectedClient } from "../_shared/client";
-import { assertCloudflareCleared } from "../_shared/cloudflare";
 import {
   absoluteUrl,
-  fetchJson,
-  fetchText,
   joinUrl,
   withQuery,
-  type SourceHttpClient,
 } from "../_shared/http";
 import { matureItem } from "../_shared/item";
+import {
+  assertNetworkCloudflareCleared,
+  createNetworkClient,
+  netGetJson,
+  netGetText,
+} from "../_shared/network";
 
 const BASE = "https://hentairead.com";
+const CF_URL = `${BASE}/`;
 const MANGA = "hentai";
 
 type PagesDto = {
@@ -124,28 +124,6 @@ const listingUrl = (page: number, sortby: string): string => {
   return withQuery(path, { sortby });
 };
 
-const getTagId = async (
-  client: SourceHttpClient,
-  tag: string,
-  type: string,
-): Promise<number | undefined> => {
-  const taxonomy = type === "artist" ? "manga_artist" : type;
-  const url = withQuery(`${BASE}/wp-admin/admin-ajax.php`, {
-    action: "search_manga_terms",
-    search: tag,
-    taxonomy,
-  });
-  const data = await fetchJson<TermResult>(url, {
-    client,
-    referer: `${BASE}/`,
-    cloudflareResolutionURL: `${BASE}/`,
-  });
-  const hit = data.results.find(
-    (item) => item.text.toLowerCase() === tag.toLowerCase(),
-  );
-  return hit?.id;
-};
-
 const parsePageRange = (
   query: string,
   minPages = 1,
@@ -168,14 +146,20 @@ const parsePageRange = (
   }
 };
 
+/**
+ * HentaiRead uses NetworkClient (no "use httpclient").
+ * Suwatte's CF Resolve WebView writes cookies into HTTPCookieStorage /
+ * AF session — the same jar NetworkClient uses. HttpClient keeps a separate
+ * jar, and validateStatus:()=>true also disabled native CF throws (no modal).
+ * Safari "Visit Website" never feeds either jar — use in-app Resolve.
+ */
 export default class Target {
-  // Owned client so Suwatte can attach CF WebView cookies to THIS source.
-  client = createProtectedClient(`${BASE}/`);
+  client = createNetworkClient();
 
   static info: SourceInfo = {
     id: "en.hentairead",
     name: "HentaiRead",
-    version: 1.5,
+    version: 1.6,
     website: BASE,
     thumbnail: "hentairead.png",
     languages: ["en"],
@@ -184,16 +168,25 @@ export default class Target {
 
   getConfiguration = (): SourceConfiguration =>
     ({
-      imageReferer: `${BASE}/`,
-      cloudflareResolutionURL: `${BASE}/`,
-      // Route page/cover images through this.client (carries CF cookies).
-      useClientForImageRequests: true,
+      imageReferer: CF_URL,
+      // Typed as SourceConfiguration but Suwatte still reads this for Resolve.
+      cloudflareResolutionURL: CF_URL,
     }) as SourceConfiguration;
 
+  private get = (url: string, referer = CF_URL) =>
+    netGetText(this.client, url, {
+      referer,
+      cloudflareResolutionURL: CF_URL,
+    });
+
+  private getJson = <T>(url: string) =>
+    netGetJson<T>(this.client, url, {
+      referer: CF_URL,
+      cloudflareResolutionURL: CF_URL,
+    });
+
   getHomePage = async (): Promise<HomePage> => {
-    // Probe once before feeds fan out — otherwise parallel list fetches can
-    // leave the source spinner hung instead of showing the CF modal.
-    await assertCloudflareCleared(this.client, `${BASE}/`);
+    await assertNetworkCloudflareCleared(this.client, CF_URL);
     return {
       feeds: [
         {
@@ -224,7 +217,6 @@ export default class Target {
     SearchFilter(
       "types",
       "Types",
-      // Madara HentaiRead defaults all types on; empty include = all.
       SelectFilter(
         [
           { id: "4", title: "Doujinshi" },
@@ -266,11 +258,7 @@ export default class Target {
     page: number,
   ): Promise<PagedItemList> => {
     const sortby = request.key === "popular" ? "views" : "new";
-    const html = await fetchText(listingUrl(page, sortby), {
-      client: this.client,
-      referer: `${BASE}/`,
-      cloudflareResolutionURL: `${BASE}/`,
-    });
+    const html = await this.get(listingUrl(page, sortby));
     const items = parseListing(html);
     return { items, isLastPage: !hasNext(html) || items.length === 0 };
   };
@@ -291,8 +279,6 @@ export default class Target {
 
     const types = filters.types as { include?: string[] } | undefined;
     for (const value of types?.include ?? []) {
-      // Repeated categories[] — append as comma-joined encoded pairs via withQuery
-      // by building manually below.
       params[`__cat_${value}`] = value;
     }
 
@@ -306,7 +292,7 @@ export default class Target {
       for (const part of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
         const exclude = part.startsWith("-");
         const name = exclude ? part.slice(1).trim() : part;
-        const id = await getTagId(this.client, name, type);
+        const id = await this.getTagId(name, type);
         if (id == null) {
           throw new Error(
             `${type.replace(/^manga_/, "").replace(/_/g, " ")} not found: ${name}`,
@@ -342,11 +328,8 @@ export default class Target {
       params.pages = `${min}-${max}`;
     }
 
-    // Build URL with repeated array query keys.
     const path =
-      page <= 1
-        ? `${BASE}/`
-        : joinUrl(BASE, "page", String(page)) + "/";
+      page <= 1 ? `${BASE}/` : joinUrl(BASE, "page", String(page)) + "/";
     const pairs: [string, string][] = [];
     for (const [key, value] of Object.entries(params)) {
       if (key.startsWith("__cat_")) {
@@ -377,22 +360,14 @@ export default class Target {
       )
       .join("&");
     const url = query ? `${path}?${query}` : path;
-    const html = await fetchText(url, {
-      client: this.client,
-      referer: `${BASE}/`,
-      cloudflareResolutionURL: `${BASE}/`,
-    });
+    const html = await this.get(url);
     const items = parseListing(html);
     return { items, isLastPage: !hasNext(html) || items.length === 0 };
   };
 
   getContent = async (contentId: string): Promise<Content> => {
     const url = joinUrl(BASE, MANGA, contentId) + "/";
-    const html = await fetchText(url, {
-      client: this.client,
-      referer: `${BASE}/`,
-      cloudflareResolutionURL: `${BASE}/`,
-    });
+    const html = await this.get(url);
 
     const title =
       stripTags(
@@ -501,7 +476,6 @@ export default class Target {
   };
 
   getChapters = async (contentId: string): Promise<Chapter[]> => {
-    // Single-chapter galleries; scanlator lifted from content when available.
     const content = await this.getContent(contentId);
     const scanlator =
       (content.context?.scanlator as string | undefined) ||
@@ -528,11 +502,7 @@ export default class Target {
     _chapterId: string,
   ): Promise<ChapterPage[]> => {
     const url = joinUrl(BASE, MANGA, contentId, "english", "p", "1") + "/";
-    const html = await fetchText(url, {
-      client: this.client,
-      referer: joinUrl(BASE, MANGA, contentId) + "/",
-      cloudflareResolutionURL: `${BASE}/`,
-    });
+    const html = await this.get(url, joinUrl(BASE, MANGA, contentId) + "/");
 
     const extra =
       firstMatch(
@@ -561,5 +531,22 @@ export default class Target {
     return pagesDto.data.chapter.images.map((image) => ({
       url: `${pageBaseUrl}/${image.src}`,
     }));
+  };
+
+  private getTagId = async (
+    tag: string,
+    type: string,
+  ): Promise<number | undefined> => {
+    const taxonomy = type === "artist" ? "manga_artist" : type;
+    const url = withQuery(`${BASE}/wp-admin/admin-ajax.php`, {
+      action: "search_manga_terms",
+      search: tag,
+      taxonomy,
+    });
+    const data = await this.getJson<TermResult>(url);
+    const hit = data.results.find(
+      (item) => item.text.toLowerCase() === tag.toLowerCase(),
+    );
+    return hit?.id;
   };
 }

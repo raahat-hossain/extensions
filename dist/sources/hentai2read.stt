@@ -1006,7 +1006,6 @@ var SourcePackage = (() => {
       exports.browserHeaders = browserHeaders;
       var createProtectedClient = (resolutionURL, extras = {}) => new HttpClient({
         timeout: 45e3,
-        validateStatus: () => true,
         cloudflareResolutionURL: resolutionURL,
         headers: (0, exports.browserHeaders)({
           Referer: resolutionURL.endsWith("/") ? resolutionURL : `${resolutionURL}/`,
@@ -1038,12 +1037,23 @@ var SourcePackage = (() => {
       exports.originOf = originOf;
       var header = (headers, name) => {
         var _a;
-        return ((_a = headers.get(name)) != null ? _a : "").toLowerCase();
+        if (!headers)
+          return "";
+        if (typeof headers.get === "function") {
+          return String((_a = headers.get(name)) != null ? _a : "").toLowerCase();
+        }
+        const obj = headers;
+        const want = name.toLowerCase();
+        for (const [key, value] of Object.entries(obj)) {
+          if (key.toLowerCase() === want)
+            return String(value != null ? value : "").toLowerCase();
+        }
+        return "";
       };
       var cloudflareFromHeaders = (status, headers) => {
         if (header(headers, "cf-mitigated").includes("challenge"))
           return true;
-        if (header(headers, "server").includes("cloudflare") && [403, 503].includes(status)) {
+        if (header(headers, "server").includes("cloudflare") && [403, 503, 429].includes(status)) {
           return true;
         }
         const location = header(headers, "location");

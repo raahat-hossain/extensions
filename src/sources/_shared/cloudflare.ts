@@ -15,17 +15,41 @@ export const originOf = (url: string): string => {
 };
 
 const header = (
-  headers: { get(name: string): string | null },
+  headers:
+    | { get(name: string): string | null }
+    | Record<string, unknown>
+    | undefined
+    | null,
   name: string,
-): string => (headers.get(name) ?? "").toLowerCase();
+): string => {
+  if (!headers) return "";
+  if (typeof (headers as { get?: unknown }).get === "function") {
+    return String(
+      (headers as { get(name: string): string | null }).get(name) ?? "",
+    ).toLowerCase();
+  }
+  const obj = headers as Record<string, unknown>;
+  const want = name.toLowerCase();
+  for (const [key, value] of Object.entries(obj)) {
+    if (key.toLowerCase() === want) return String(value ?? "").toLowerCase();
+  }
+  return "";
+};
 
 /** Prefer header signals so we can throw before waiting on a huge body. */
 export const cloudflareFromHeaders = (
   status: number,
-  headers: { get(name: string): string | null },
+  headers:
+    | { get(name: string): string | null }
+    | Record<string, unknown>
+    | undefined
+    | null,
 ): boolean => {
   if (header(headers, "cf-mitigated").includes("challenge")) return true;
-  if (header(headers, "server").includes("cloudflare") && [403, 503].includes(status)) {
+  if (
+    header(headers, "server").includes("cloudflare") &&
+    [403, 503, 429].includes(status)
+  ) {
     return true;
   }
   const location = header(headers, "location");

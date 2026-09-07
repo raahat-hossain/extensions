@@ -47,7 +47,11 @@ const assertNotCloudflare = (
   url: string,
   status: number,
   body: string,
-  headers: { get(name: string): string | null },
+  headers:
+    | { get(name: string): string | null }
+    | Record<string, unknown>
+    | undefined
+    | null,
   resolutionURL?: string,
 ): void => {
   const resolution = resolutionURL ?? originOf(url);

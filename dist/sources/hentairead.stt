@@ -1,4 +1,3 @@
-"use httpclient";
 var global = globalThis;
 "use strict";
 var SourcePackage = (() => {
@@ -988,35 +987,6 @@ var SourcePackage = (() => {
     }
   });
 
-  // __temp__/sources/_shared/client.js
-  var require_client2 = __commonJS({
-    "__temp__/sources/_shared/client.js"(exports) {
-      "use strict";
-      init_Buffer();
-      init_process();
-      Object.defineProperty(exports, "__esModule", { value: true });
-      exports.createProtectedClient = exports.browserHeaders = exports.BROWSER_ACCEPT_LANGUAGE = exports.BROWSER_ACCEPT = void 0;
-      exports.BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
-      exports.BROWSER_ACCEPT_LANGUAGE = "en-US,en;q=0.9";
-      var browserHeaders = (extras = {}) => ({
-        Accept: exports.BROWSER_ACCEPT,
-        "Accept-Language": exports.BROWSER_ACCEPT_LANGUAGE,
-        ...extras
-      });
-      exports.browserHeaders = browserHeaders;
-      var createProtectedClient = (resolutionURL, extras = {}) => new HttpClient({
-        timeout: 45e3,
-        validateStatus: () => true,
-        cloudflareResolutionURL: resolutionURL,
-        headers: (0, exports.browserHeaders)({
-          Referer: resolutionURL.endsWith("/") ? resolutionURL : `${resolutionURL}/`,
-          ...extras
-        })
-      });
-      exports.createProtectedClient = createProtectedClient;
-    }
-  });
-
   // __temp__/sources/_shared/cloudflare.js
   var require_cloudflare = __commonJS({
     "__temp__/sources/_shared/cloudflare.js"(exports) {
@@ -1038,12 +1008,23 @@ var SourcePackage = (() => {
       exports.originOf = originOf;
       var header = (headers, name) => {
         var _a;
-        return ((_a = headers.get(name)) != null ? _a : "").toLowerCase();
+        if (!headers)
+          return "";
+        if (typeof headers.get === "function") {
+          return String((_a = headers.get(name)) != null ? _a : "").toLowerCase();
+        }
+        const obj = headers;
+        const want = name.toLowerCase();
+        for (const [key, value] of Object.entries(obj)) {
+          if (key.toLowerCase() === want)
+            return String(value != null ? value : "").toLowerCase();
+        }
+        return "";
       };
       var cloudflareFromHeaders = (status, headers) => {
         if (header(headers, "cf-mitigated").includes("challenge"))
           return true;
-        if (header(headers, "server").includes("cloudflare") && [403, 503].includes(status)) {
+        if (header(headers, "server").includes("cloudflare") && [403, 503, 429].includes(status)) {
           return true;
         }
         const location = header(headers, "location");
@@ -1283,21 +1264,123 @@ var SourcePackage = (() => {
     }
   });
 
+  // __temp__/sources/_shared/client.js
+  var require_client2 = __commonJS({
+    "__temp__/sources/_shared/client.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.createProtectedClient = exports.browserHeaders = exports.BROWSER_ACCEPT_LANGUAGE = exports.BROWSER_ACCEPT = void 0;
+      exports.BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
+      exports.BROWSER_ACCEPT_LANGUAGE = "en-US,en;q=0.9";
+      var browserHeaders = (extras = {}) => ({
+        Accept: exports.BROWSER_ACCEPT,
+        "Accept-Language": exports.BROWSER_ACCEPT_LANGUAGE,
+        ...extras
+      });
+      exports.browserHeaders = browserHeaders;
+      var createProtectedClient = (resolutionURL, extras = {}) => new HttpClient({
+        timeout: 45e3,
+        cloudflareResolutionURL: resolutionURL,
+        headers: (0, exports.browserHeaders)({
+          Referer: resolutionURL.endsWith("/") ? resolutionURL : `${resolutionURL}/`,
+          ...extras
+        })
+      });
+      exports.createProtectedClient = createProtectedClient;
+    }
+  });
+
+  // __temp__/sources/_shared/network.js
+  var require_network = __commonJS({
+    "__temp__/sources/_shared/network.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.assertNetworkCloudflareCleared = exports.netGetJson = exports.netGetText = exports.createNetworkClient = void 0;
+      var cloudflare_1 = require_cloudflare();
+      var client_1 = require_client2();
+      var headerGet = (headers, name) => {
+        if (!headers)
+          return null;
+        const want = name.toLowerCase();
+        for (const [key, value] of Object.entries(headers)) {
+          if (key.toLowerCase() === want) {
+            return value == null ? null : String(value);
+          }
+        }
+        return null;
+      };
+      var asHeaderBag = (headers) => ({
+        get: (name) => headerGet(headers, name)
+      });
+      var rethrowCloudflare = (error, resolutionURL) => {
+        var _a, _b, _c, _d;
+        const message = String((_a = error == null ? void 0 : error.message) != null ? _a : error);
+        const name = String((_d = (_c = error == null ? void 0 : error.name) != null ? _c : (_b = error == null ? void 0 : error.constructor) == null ? void 0 : _b.name) != null ? _d : "");
+        if (name.includes("Cloudflare") || message.includes("Cloudflare") || message.includes("cloudflare")) {
+          (0, cloudflare_1.throwCloudflare)(resolutionURL);
+        }
+        throw error;
+      };
+      var createNetworkClient = () => new NetworkClient();
+      exports.createNetworkClient = createNetworkClient;
+      var netGetText = async (client, url, options) => {
+        var _a, _b, _c, _d;
+        const resolution = (_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url);
+        try {
+          const response = await client.get(url, {
+            timeout: (_b = options == null ? void 0 : options.timeout) != null ? _b : 45e3,
+            headers: (0, client_1.browserHeaders)({
+              ...(options == null ? void 0 : options.referer) ? { Referer: options.referer } : {},
+              ...(_c = options == null ? void 0 : options.headers) != null ? _c : {}
+            })
+          });
+          const headers = asHeaderBag(response.headers);
+          if ((0, cloudflare_1.cloudflareFromHeaders)(response.status, headers)) {
+            (0, cloudflare_1.throwCloudflare)(resolution);
+          }
+          const body = (_d = response.data) != null ? _d : "";
+          if ((0, cloudflare_1.looksLikeCloudflare)(body)) {
+            (0, cloudflare_1.throwCloudflare)(resolution);
+          }
+          if (response.status < 200 || response.status >= 300) {
+            throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
+          }
+          return body;
+        } catch (error) {
+          return rethrowCloudflare(error, resolution);
+        }
+      };
+      exports.netGetText = netGetText;
+      var netGetJson = async (client, url, options) => JSON.parse(await (0, exports.netGetText)(client, url, options));
+      exports.netGetJson = netGetJson;
+      var assertNetworkCloudflareCleared = async (client, resolutionURL) => {
+        await (0, exports.netGetText)(client, resolutionURL, {
+          cloudflareResolutionURL: resolutionURL,
+          timeout: 2e4
+        });
+      };
+      exports.assertNetworkCloudflareCleared = assertNetworkCloudflareCleared;
+    }
+  });
+
   // __temp__/sources/hentairead/index.js
   var require_hentairead = __commonJS({
     "__temp__/sources/hentairead/index.js"(exports) {
       "use strict";
-      "use httpclient";
       init_Buffer();
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
       var types_1 = require_types();
       var html_1 = require_html();
-      var client_1 = require_client2();
-      var cloudflare_1 = require_cloudflare();
       var http_1 = require_http2();
       var item_1 = require_item2();
+      var network_1 = require_network();
       var BASE = "https://hentairead.com";
+      var CF_URL = `${BASE}/`;
       var MANGA = "hentai";
       var chapterExtraDataRegex = /= (\{[^;]+)/;
       var pagesDataRegex = /.(ey\S+).\s/;
@@ -1347,21 +1430,6 @@ var SourcePackage = (() => {
         const path = page <= 1 ? (0, http_1.joinUrl)(BASE, MANGA) + "/" : (0, http_1.joinUrl)(BASE, MANGA, "page", String(page)) + "/";
         return (0, http_1.withQuery)(path, { sortby });
       };
-      var getTagId = async (client, tag, type) => {
-        const taxonomy = type === "artist" ? "manga_artist" : type;
-        const url = (0, http_1.withQuery)(`${BASE}/wp-admin/admin-ajax.php`, {
-          action: "search_manga_terms",
-          search: tag,
-          taxonomy
-        });
-        const data = await (0, http_1.fetchJson)(url, {
-          client,
-          referer: `${BASE}/`,
-          cloudflareResolutionURL: `${BASE}/`
-        });
-        const hit = data.results.find((item) => item.text.toLowerCase() === tag.toLowerCase());
-        return hit == null ? void 0 : hit.id;
-      };
       var parsePageRange = (query, minPages = 1, maxPages = 9999) => {
         const num = Number.parseInt(query.replace(/\D/g, ""), 10);
         const limited = (n = num) => Math.min(maxPages, Math.max(minPages, n));
@@ -1384,16 +1452,22 @@ var SourcePackage = (() => {
       };
       var Target = class {
         constructor() {
-          // Owned client so Suwatte can attach CF WebView cookies to THIS source.
-          __publicField(this, "client", (0, client_1.createProtectedClient)(`${BASE}/`));
+          __publicField(this, "client", (0, network_1.createNetworkClient)());
           __publicField(this, "getConfiguration", () => ({
-            imageReferer: `${BASE}/`,
-            cloudflareResolutionURL: `${BASE}/`,
-            // Route page/cover images through this.client (carries CF cookies).
-            useClientForImageRequests: true
+            imageReferer: CF_URL,
+            // Typed as SourceConfiguration but Suwatte still reads this for Resolve.
+            cloudflareResolutionURL: CF_URL
+          }));
+          __publicField(this, "get", (url, referer = CF_URL) => (0, network_1.netGetText)(this.client, url, {
+            referer,
+            cloudflareResolutionURL: CF_URL
+          }));
+          __publicField(this, "getJson", (url) => (0, network_1.netGetJson)(this.client, url, {
+            referer: CF_URL,
+            cloudflareResolutionURL: CF_URL
           }));
           __publicField(this, "getHomePage", async () => {
-            await (0, cloudflare_1.assertCloudflareCleared)(this.client, `${BASE}/`);
+            await (0, network_1.assertNetworkCloudflareCleared)(this.client, CF_URL);
             return {
               feeds: [
                 {
@@ -1419,17 +1493,12 @@ var SourcePackage = (() => {
             disableOrdering: false
           }));
           __publicField(this, "getSearchFilters", async () => [
-            (0, types_1.SearchFilter)(
-              "types",
-              "Types",
-              // Madara HentaiRead defaults all types on; empty include = all.
-              (0, types_1.SelectFilter)([
-                { id: "4", title: "Doujinshi" },
-                { id: "52", title: "Manga" },
-                { id: "4798", title: "Artist CG" },
-                { id: "36278", title: "Western" }
-              ], false)
-            ),
+            (0, types_1.SearchFilter)("types", "Types", (0, types_1.SelectFilter)([
+              { id: "4", title: "Doujinshi" },
+              { id: "52", title: "Manga" },
+              { id: "4798", title: "Artist CG" },
+              { id: "36278", title: "Western" }
+            ], false)),
             (0, types_1.SearchFilter)("tags", "Tags", (0, types_1.TextFilter)(), "Comma-separated. Prefix with - to exclude."),
             (0, types_1.SearchFilter)("artists", "Artists", (0, types_1.TextFilter)(), "Comma-separated"),
             (0, types_1.SearchFilter)("circles", "Circles", (0, types_1.TextFilter)(), "Comma-separated"),
@@ -1442,11 +1511,7 @@ var SourcePackage = (() => {
           ]);
           __publicField(this, "getItemList", async (request, page) => {
             const sortby = request.key === "popular" ? "views" : "new";
-            const html = await (0, http_1.fetchText)(listingUrl(page, sortby), {
-              client: this.client,
-              referer: `${BASE}/`,
-              cloudflareResolutionURL: `${BASE}/`
-            });
+            const html = await this.get(listingUrl(page, sortby));
             const items = parseListing(html);
             return { items, isLastPage: !hasNext(html) || items.length === 0 };
           });
@@ -1472,7 +1537,7 @@ var SourcePackage = (() => {
               for (const part of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
                 const exclude = part.startsWith("-");
                 const name = exclude ? part.slice(1).trim() : part;
-                const id = await getTagId(this.client, name, type);
+                const id = await this.getTagId(name, type);
                 if (id == null) {
                   throw new Error(`${type.replace(/^manga_/, "").replace(/_/g, " ")} not found: ${name}`);
                 }
@@ -1528,22 +1593,14 @@ var SourcePackage = (() => {
             }
             const query = pairs.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
             const url = query ? `${path}?${query}` : path;
-            const html = await (0, http_1.fetchText)(url, {
-              client: this.client,
-              referer: `${BASE}/`,
-              cloudflareResolutionURL: `${BASE}/`
-            });
+            const html = await this.get(url);
             const items = parseListing(html);
             return { items, isLastPage: !hasNext(html) || items.length === 0 };
           });
           __publicField(this, "getContent", async (contentId) => {
             var _a, _b, _c, _d;
             const url = (0, http_1.joinUrl)(BASE, MANGA, contentId) + "/";
-            const html = await (0, http_1.fetchText)(url, {
-              client: this.client,
-              referer: `${BASE}/`,
-              cloudflareResolutionURL: `${BASE}/`
-            });
+            const html = await this.get(url);
             const title = (0, html_1.stripTags)((_b = (_a = (0, html_1.firstMatch)(html, /<div[^>]*class=["'][^"']*manga-titles[^"']*["'][^>]*>[\s\S]*?<h1\b[^>]*>([\s\S]*?)<\/h1>/i)) != null ? _a : (0, html_1.firstMatch)(html, /<h1\b[^>]*>([\s\S]*?)<\/h1>/i)) != null ? _b : "") || contentId;
             const authors = eachLinkTexts(html, "/circle/");
             const artists = eachLinkTexts(html, "/artist/");
@@ -1627,11 +1684,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
           __publicField(this, "getChapterPages", async (contentId, _chapterId) => {
             var _a, _b;
             const url = (0, http_1.joinUrl)(BASE, MANGA, contentId, "english", "p", "1") + "/";
-            const html = await (0, http_1.fetchText)(url, {
-              client: this.client,
-              referer: (0, http_1.joinUrl)(BASE, MANGA, contentId) + "/",
-              cloudflareResolutionURL: `${BASE}/`
-            });
+            const html = await this.get(url, (0, http_1.joinUrl)(BASE, MANGA, contentId) + "/");
             const extra = (_a = (0, html_1.firstMatch)(html, /<script\b[^>]*id=["']single-chapter-js-extra["'][^>]*>([\s\S]*?)<\/script>/i)) != null ? _a : "";
             const baseMatch = chapterExtraDataRegex.exec(extra);
             let pageBaseUrl = "";
@@ -1649,12 +1702,23 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
               url: `${pageBaseUrl}/${image.src}`
             }));
           });
+          __publicField(this, "getTagId", async (tag, type) => {
+            const taxonomy = type === "artist" ? "manga_artist" : type;
+            const url = (0, http_1.withQuery)(`${BASE}/wp-admin/admin-ajax.php`, {
+              action: "search_manga_terms",
+              search: tag,
+              taxonomy
+            });
+            const data = await this.getJson(url);
+            const hit = data.results.find((item) => item.text.toLowerCase() === tag.toLowerCase());
+            return hit == null ? void 0 : hit.id;
+          });
         }
       };
       __publicField(Target, "info", {
         id: "en.hentairead",
         name: "HentaiRead",
-        version: 1.5,
+        version: 1.6,
         website: BASE,
         thumbnail: "hentairead.png",
         languages: ["en"],
@@ -1672,7 +1736,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       var runtime = require_runtime();
       var sourceModule = require_hentairead();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.hentairead", "name": "HentaiRead", "version": 1.5, "website": "https://hentairead.com", "thumbnail": "hentairead.png", "languages": ["en"], "rating": 2 };
+      exports.SourceMetadata = { "id": "en.hentairead", "name": "HentaiRead", "version": 1.6, "website": "https://hentairead.com", "thumbnail": "hentairead.png", "languages": ["en"], "rating": 2 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

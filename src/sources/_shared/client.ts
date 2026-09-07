@@ -22,9 +22,10 @@ export const browserHeaders = (
 /**
  * HttpClient owned by a source class (`this.client`).
  *
- * Do NOT set validateStatus: () => true — that skips HttpClient's native
- * CloudflareError throw (no Resolve modal). Prefer NetworkClient for heavily
- * CF-gated sites; its jar matches the Resolve WebView cookie store.
+ * Per Suwatte docs: set cloudflareResolutionURL here (and in getConfiguration).
+ * When a challenge appears, the app opens Resolve and attaches cookies to this
+ * client. Do NOT set validateStatus: () => true — that skips native CF throws.
+ * Requires `"use httpclient"` and useClientForImageRequests for image cookies.
  */
 export const createProtectedClient = (
   resolutionURL: string,

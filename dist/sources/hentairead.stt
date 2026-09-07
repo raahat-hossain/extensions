@@ -1,3 +1,4 @@
+"use httpclient";
 var global = globalThis;
 "use strict";
 var SourcePackage = (() => {
@@ -987,6 +988,34 @@ var SourcePackage = (() => {
     }
   });
 
+  // __temp__/sources/_shared/client.js
+  var require_client2 = __commonJS({
+    "__temp__/sources/_shared/client.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.createProtectedClient = exports.browserHeaders = exports.BROWSER_ACCEPT_LANGUAGE = exports.BROWSER_ACCEPT = void 0;
+      exports.BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
+      exports.BROWSER_ACCEPT_LANGUAGE = "en-US,en;q=0.9";
+      var browserHeaders = (extras = {}) => ({
+        Accept: exports.BROWSER_ACCEPT,
+        "Accept-Language": exports.BROWSER_ACCEPT_LANGUAGE,
+        ...extras
+      });
+      exports.browserHeaders = browserHeaders;
+      var createProtectedClient = (resolutionURL, extras = {}) => new HttpClient({
+        timeout: 45e3,
+        cloudflareResolutionURL: resolutionURL,
+        headers: (0, exports.browserHeaders)({
+          Referer: resolutionURL.endsWith("/") ? resolutionURL : `${resolutionURL}/`,
+          ...extras
+        })
+      });
+      exports.createProtectedClient = createProtectedClient;
+    }
+  });
+
   // __temp__/sources/_shared/cloudflare.js
   var require_cloudflare = __commonJS({
     "__temp__/sources/_shared/cloudflare.js"(exports) {
@@ -1279,143 +1308,24 @@ var SourcePackage = (() => {
     }
   });
 
-  // __temp__/sources/_shared/client.js
-  var require_client2 = __commonJS({
-    "__temp__/sources/_shared/client.js"(exports) {
-      "use strict";
-      init_Buffer();
-      init_process();
-      Object.defineProperty(exports, "__esModule", { value: true });
-      exports.createProtectedClient = exports.browserHeaders = exports.BROWSER_ACCEPT_LANGUAGE = exports.BROWSER_ACCEPT = void 0;
-      exports.BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
-      exports.BROWSER_ACCEPT_LANGUAGE = "en-US,en;q=0.9";
-      var browserHeaders = (extras = {}) => ({
-        Accept: exports.BROWSER_ACCEPT,
-        "Accept-Language": exports.BROWSER_ACCEPT_LANGUAGE,
-        ...extras
-      });
-      exports.browserHeaders = browserHeaders;
-      var createProtectedClient = (resolutionURL, extras = {}) => new HttpClient({
-        timeout: 45e3,
-        cloudflareResolutionURL: resolutionURL,
-        headers: (0, exports.browserHeaders)({
-          Referer: resolutionURL.endsWith("/") ? resolutionURL : `${resolutionURL}/`,
-          ...extras
-        })
-      });
-      exports.createProtectedClient = createProtectedClient;
-    }
-  });
-
-  // __temp__/sources/_shared/network.js
-  var require_network = __commonJS({
-    "__temp__/sources/_shared/network.js"(exports) {
-      "use strict";
-      init_Buffer();
-      init_process();
-      Object.defineProperty(exports, "__esModule", { value: true });
-      exports.assertNetworkCloudflareCleared = exports.netGetJson = exports.netGetText = exports.createNetworkClient = void 0;
-      var cloudflare_1 = require_cloudflare();
-      var client_1 = require_client2();
-      var headerGet = (headers, name) => {
-        if (!headers)
-          return null;
-        const want = name.toLowerCase();
-        for (const [key, value] of Object.entries(headers)) {
-          if (key.toLowerCase() === want) {
-            return value == null ? null : String(value);
-          }
-        }
-        return null;
-      };
-      var asHeaderBag = (headers) => ({
-        get: (name) => headerGet(headers, name)
-      });
-      var rethrowCloudflare = (error, resolutionURL) => {
-        var _a, _b, _c, _d;
-        const message = String((_a = error == null ? void 0 : error.message) != null ? _a : error);
-        const name = String((_d = (_c = error == null ? void 0 : error.name) != null ? _c : (_b = error == null ? void 0 : error.constructor) == null ? void 0 : _b.name) != null ? _d : "");
-        if (name.includes("Cloudflare") || message.includes("Cloudflare") || message.includes("cloudflare")) {
-          (0, cloudflare_1.throwCloudflare)(resolutionURL);
-        }
-        throw error;
-      };
-      var createNetworkClient = () => new NetworkClient();
-      exports.createNetworkClient = createNetworkClient;
-      var netGetText = async (client, url, options) => {
-        var _a, _b, _c, _d;
-        const resolution = (_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url);
-        try {
-          const response = await client.get(url, {
-            timeout: (_b = options == null ? void 0 : options.timeout) != null ? _b : 45e3,
-            headers: (0, client_1.browserHeaders)({
-              ...(options == null ? void 0 : options.referer) ? { Referer: options.referer } : {},
-              ...(_c = options == null ? void 0 : options.headers) != null ? _c : {}
-            })
-          });
-          const headers = asHeaderBag(response.headers);
-          if ((0, cloudflare_1.cloudflareFromHeaders)(response.status, headers)) {
-            (0, cloudflare_1.throwCloudflare)(resolution);
-          }
-          const body = (_d = response.data) != null ? _d : "";
-          if ((0, cloudflare_1.looksLikeCloudflare)(body)) {
-            (0, cloudflare_1.throwCloudflare)(resolution);
-          }
-          if (response.status < 200 || response.status >= 300) {
-            throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
-          }
-          return body;
-        } catch (error) {
-          return rethrowCloudflare(error, resolution);
-        }
-      };
-      exports.netGetText = netGetText;
-      var netGetJson = async (client, url, options) => JSON.parse(await (0, exports.netGetText)(client, url, options));
-      exports.netGetJson = netGetJson;
-      var assertNetworkCloudflareCleared = async (client, resolutionURL, probeURLs = [resolutionURL]) => {
-        var _a, _b;
-        const urls = probeURLs.length ? probeURLs : [resolutionURL];
-        for (const url of urls) {
-          try {
-            await (0, exports.netGetText)(client, url, {
-              cloudflareResolutionURL: resolutionURL,
-              timeout: 2e4
-            });
-            return;
-          } catch (error) {
-            const message = String((_a = error == null ? void 0 : error.message) != null ? _a : error);
-            const name = String((_b = error == null ? void 0 : error.name) != null ? _b : "");
-            if (name.includes("Cloudflare") || message.includes("Cloudflare") || message.includes("cloudflare")) {
-              (0, cloudflare_1.throwCloudflare)(resolutionURL);
-            }
-          }
-        }
-        (0, cloudflare_1.throwCloudflare)(resolutionURL);
-      };
-      exports.assertNetworkCloudflareCleared = assertNetworkCloudflareCleared;
-    }
-  });
-
   // __temp__/sources/hentairead/index.js
   var require_hentairead = __commonJS({
     "__temp__/sources/hentairead/index.js"(exports) {
       "use strict";
+      "use httpclient";
       init_Buffer();
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
       var types_1 = require_types();
       var html_1 = require_html();
-      var http_1 = require_http2();
+      var client_1 = require_client2();
       var cloudflare_1 = require_cloudflare();
+      var http_1 = require_http2();
       var item_1 = require_item2();
-      var network_1 = require_network();
       var BASE = "https://hentairead.com";
       var MANGA = "hentai";
       var CF_RESOLVE = `${BASE}/hentai/?sortby=new`;
-      var SETTINGS = {
-        forceResolve: "force_cf_resolve",
-        resetSession: "reset_cf_session"
-      };
+      var SETTINGS = { forceResolve: "force_cf_resolve" };
       var chapterExtraDataRegex = /= (\{[^;]+)/;
       var pagesDataRegex = /.(ey\S+).\s/;
       var capitalizeEach = (value) => value.split(" ").map((word) => word ? word.charAt(0).toUpperCase() + word.slice(1) : word).join(" ");
@@ -1464,6 +1374,21 @@ var SourcePackage = (() => {
         const path = page <= 1 ? (0, http_1.joinUrl)(BASE, MANGA) + "/" : (0, http_1.joinUrl)(BASE, MANGA, "page", String(page)) + "/";
         return (0, http_1.withQuery)(path, { sortby });
       };
+      var getTagId = async (client, tag, type) => {
+        const taxonomy = type === "artist" ? "manga_artist" : type;
+        const url = (0, http_1.withQuery)(`${BASE}/wp-admin/admin-ajax.php`, {
+          action: "search_manga_terms",
+          search: tag,
+          taxonomy
+        });
+        const data = await (0, http_1.fetchJson)(url, {
+          client,
+          referer: `${BASE}/`,
+          cloudflareResolutionURL: CF_RESOLVE
+        });
+        const hit = data.results.find((item) => item.text.toLowerCase() === tag.toLowerCase());
+        return hit == null ? void 0 : hit.id;
+      };
       var parsePageRange = (query, minPages = 1, maxPages = 9999) => {
         const num = Number.parseInt(query.replace(/\D/g, ""), 10);
         const limited = (n = num) => Math.min(maxPages, Math.max(minPages, n));
@@ -1486,10 +1411,11 @@ var SourcePackage = (() => {
       };
       var Target = class {
         constructor() {
-          __publicField(this, "client", (0, network_1.createNetworkClient)());
+          __publicField(this, "client", (0, client_1.createProtectedClient)(CF_RESOLVE));
           __publicField(this, "getConfiguration", () => ({
             imageReferer: `${BASE}/`,
-            cloudflareResolutionURL: CF_RESOLVE
+            cloudflareResolutionURL: CF_RESOLVE,
+            useClientForImageRequests: true
           }));
           __publicField(this, "getSettingsPage", async () => {
             const forceResolve = !!await ObjectStore.boolean(SETTINGS.forceResolve);
@@ -1497,7 +1423,7 @@ var SourcePackage = (() => {
               sections: [
                 {
                   header: "Cloudflare",
-                  footer: "Sources cannot wipe Suwatte's cookie jar. To clear cache/cookies: Suwatte \u2192 Settings \u2192 Clear Cookies and Clear Network Cache, then enable Force Resolve below (Submit) and reopen the source. Source Availability tests always abort on CF by design \u2014 use Browse \u2192 Resolve & Retry instead.",
+                  footer: "Official fix if Resolve loops: Suwatte \u2192 Settings \u2192 Advanced \u2192 Network & Caches \u2192 Clear Network Cache, then Resolve again. Sources cannot clear the app cookie jar themselves.",
                   views: [
                     (0, types_1.UIWebViewButton)({
                       title: "Open Challenge Page",
@@ -1507,12 +1433,6 @@ var SourcePackage = (() => {
                       id: SETTINGS.forceResolve,
                       title: "Force Resolve on next open",
                       currentValue: forceResolve
-                    }),
-                    (0, types_1.UIToggle)({
-                      id: SETTINGS.resetSession,
-                      title: "Reset CF session (request Resolve)",
-                      currentValue: false,
-                      defaultValue: false
                     })
                   ]
                 }
@@ -1520,35 +1440,17 @@ var SourcePackage = (() => {
             };
           });
           __publicField(this, "onFormSubmitted", async (_id, data) => {
-            const force = !!data[SETTINGS.forceResolve];
-            const reset = !!data[SETTINGS.resetSession];
-            if (force || reset) {
+            if (data[SETTINGS.forceResolve]) {
               await ObjectStore.set(SETTINGS.forceResolve, true);
             } else {
               await ObjectStore.remove(SETTINGS.forceResolve);
             }
           });
-          /** Closest thing to "clear auth/session" — forces Resolve next open. */
-          __publicField(this, "clearAuthentication", async () => {
-            await ObjectStore.set(SETTINGS.forceResolve, true);
-          });
-          __publicField(this, "get", (url, referer = `${BASE}/`) => (0, network_1.netGetText)(this.client, url, {
-            referer,
-            cloudflareResolutionURL: CF_RESOLVE
-          }));
-          __publicField(this, "getJson", (url) => (0, network_1.netGetJson)(this.client, url, {
-            referer: `${BASE}/`,
-            cloudflareResolutionURL: CF_RESOLVE
-          }));
-          __publicField(this, "consumeForceResolve", async () => {
-            const force = await ObjectStore.boolean(SETTINGS.forceResolve);
-            if (!force)
-              return;
-            await ObjectStore.remove(SETTINGS.forceResolve);
-            (0, cloudflare_1.throwCloudflare)(CF_RESOLVE);
-          });
           __publicField(this, "getHomePage", async () => {
-            await this.consumeForceResolve();
+            if (await ObjectStore.boolean(SETTINGS.forceResolve)) {
+              await ObjectStore.remove(SETTINGS.forceResolve);
+              (0, cloudflare_1.throwCloudflare)(CF_RESOLVE);
+            }
             return {
               feeds: [
                 {
@@ -1574,12 +1476,17 @@ var SourcePackage = (() => {
             disableOrdering: false
           }));
           __publicField(this, "getSearchFilters", async () => [
-            (0, types_1.SearchFilter)("types", "Types", (0, types_1.SelectFilter)([
-              { id: "4", title: "Doujinshi" },
-              { id: "52", title: "Manga" },
-              { id: "4798", title: "Artist CG" },
-              { id: "36278", title: "Western" }
-            ], false)),
+            (0, types_1.SearchFilter)(
+              "types",
+              "Types",
+              // Madara HentaiRead defaults all types on; empty include = all.
+              (0, types_1.SelectFilter)([
+                { id: "4", title: "Doujinshi" },
+                { id: "52", title: "Manga" },
+                { id: "4798", title: "Artist CG" },
+                { id: "36278", title: "Western" }
+              ], false)
+            ),
             (0, types_1.SearchFilter)("tags", "Tags", (0, types_1.TextFilter)(), "Comma-separated. Prefix with - to exclude."),
             (0, types_1.SearchFilter)("artists", "Artists", (0, types_1.TextFilter)(), "Comma-separated"),
             (0, types_1.SearchFilter)("circles", "Circles", (0, types_1.TextFilter)(), "Comma-separated"),
@@ -1592,7 +1499,11 @@ var SourcePackage = (() => {
           ]);
           __publicField(this, "getItemList", async (request, page) => {
             const sortby = request.key === "popular" ? "views" : "new";
-            const html = await this.get(listingUrl(page, sortby));
+            const html = await (0, http_1.fetchText)(listingUrl(page, sortby), {
+              client: this.client,
+              referer: `${BASE}/`,
+              cloudflareResolutionURL: CF_RESOLVE
+            });
             const items = parseListing(html);
             return { items, isLastPage: !hasNext(html) || items.length === 0 };
           });
@@ -1618,7 +1529,7 @@ var SourcePackage = (() => {
               for (const part of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
                 const exclude = part.startsWith("-");
                 const name = exclude ? part.slice(1).trim() : part;
-                const id = await this.getTagId(name, type);
+                const id = await getTagId(this.client, name, type);
                 if (id == null) {
                   throw new Error(`${type.replace(/^manga_/, "").replace(/_/g, " ")} not found: ${name}`);
                 }
@@ -1674,14 +1585,22 @@ var SourcePackage = (() => {
             }
             const query = pairs.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
             const url = query ? `${path}?${query}` : path;
-            const html = await this.get(url);
+            const html = await (0, http_1.fetchText)(url, {
+              client: this.client,
+              referer: `${BASE}/`,
+              cloudflareResolutionURL: CF_RESOLVE
+            });
             const items = parseListing(html);
             return { items, isLastPage: !hasNext(html) || items.length === 0 };
           });
           __publicField(this, "getContent", async (contentId) => {
             var _a, _b, _c, _d;
             const url = (0, http_1.joinUrl)(BASE, MANGA, contentId) + "/";
-            const html = await this.get(url);
+            const html = await (0, http_1.fetchText)(url, {
+              client: this.client,
+              referer: `${BASE}/`,
+              cloudflareResolutionURL: CF_RESOLVE
+            });
             const title = (0, html_1.stripTags)((_b = (_a = (0, html_1.firstMatch)(html, /<div[^>]*class=["'][^"']*manga-titles[^"']*["'][^>]*>[\s\S]*?<h1\b[^>]*>([\s\S]*?)<\/h1>/i)) != null ? _a : (0, html_1.firstMatch)(html, /<h1\b[^>]*>([\s\S]*?)<\/h1>/i)) != null ? _b : "") || contentId;
             const authors = eachLinkTexts(html, "/circle/");
             const artists = eachLinkTexts(html, "/artist/");
@@ -1765,7 +1684,11 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
           __publicField(this, "getChapterPages", async (contentId, _chapterId) => {
             var _a, _b;
             const url = (0, http_1.joinUrl)(BASE, MANGA, contentId, "english", "p", "1") + "/";
-            const html = await this.get(url, (0, http_1.joinUrl)(BASE, MANGA, contentId) + "/");
+            const html = await (0, http_1.fetchText)(url, {
+              client: this.client,
+              referer: (0, http_1.joinUrl)(BASE, MANGA, contentId) + "/",
+              cloudflareResolutionURL: CF_RESOLVE
+            });
             const extra = (_a = (0, html_1.firstMatch)(html, /<script\b[^>]*id=["']single-chapter-js-extra["'][^>]*>([\s\S]*?)<\/script>/i)) != null ? _a : "";
             const baseMatch = chapterExtraDataRegex.exec(extra);
             let pageBaseUrl = "";
@@ -1783,23 +1706,12 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
               url: `${pageBaseUrl}/${image.src}`
             }));
           });
-          __publicField(this, "getTagId", async (tag, type) => {
-            const taxonomy = type === "artist" ? "manga_artist" : type;
-            const url = (0, http_1.withQuery)(`${BASE}/wp-admin/admin-ajax.php`, {
-              action: "search_manga_terms",
-              search: tag,
-              taxonomy
-            });
-            const data = await this.getJson(url);
-            const hit = data.results.find((item) => item.text.toLowerCase() === tag.toLowerCase());
-            return hit == null ? void 0 : hit.id;
-          });
         }
       };
       __publicField(Target, "info", {
         id: "en.hentairead",
         name: "HentaiRead",
-        version: 1.8,
+        version: 1.9,
         website: BASE,
         thumbnail: "hentairead.png",
         languages: ["en"],
@@ -1817,7 +1729,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       var runtime = require_runtime();
       var sourceModule = require_hentairead();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.hentairead", "name": "HentaiRead", "version": 1.8, "website": "https://hentairead.com", "thumbnail": "hentairead.png", "languages": ["en"], "rating": 2 };
+      exports.SourceMetadata = { "id": "en.hentairead", "name": "HentaiRead", "version": 1.9, "website": "https://hentairead.com", "thumbnail": "hentairead.png", "languages": ["en"], "rating": 2 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

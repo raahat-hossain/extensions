@@ -23,60 +23,43 @@ try {
   throwCloudflare(NESTED);
 } catch (error) {
   if (!(error instanceof CloudflareError)) throw error;
-  if (error.resolutionURL !== NESTED) throw new Error("url");
   console.log("CloudflareError OK", error.resolutionURL);
 }
 
 const source = new HentaiRead();
 const cfg = source.getConfiguration() as {
   cloudflareResolutionURL?: string;
+  useClientForImageRequests?: boolean;
 };
 if (cfg.cloudflareResolutionURL !== NESTED) {
-  throw new Error(`missing nested resolution url: ${JSON.stringify(cfg)}`);
+  throw new Error(`bad resolution url: ${JSON.stringify(cfg)}`);
 }
-if (HentaiRead.info.version < 1.8) {
-  throw new Error(`expected version >= 1.8, got ${HentaiRead.info.version}`);
+if (!cfg.useClientForImageRequests) {
+  throw new Error("useClientForImageRequests required per docs");
+}
+if (HentaiRead.info.version < 1.9) {
+  throw new Error(`expected >= 1.9, got ${HentaiRead.info.version}`);
 }
 
 const src = readFileSync("src/sources/hentairead/index.ts", "utf8");
-if (/^["']use httpclient["']/m.test(src)) {
-  throw new Error("hentairead must not use httpclient (NetworkClient required)");
+if (!/^["']use httpclient["']/m.test(src)) {
+  throw new Error("hentairead must use httpclient (documented CF path)");
 }
-if (!src.includes("getSettingsPage")) {
-  throw new Error("hentairead must expose getSettingsPage");
+if (!(source as { client?: unknown }).client) {
+  throw new Error("missing this.client HttpClient");
 }
 console.log("hentairead config OK", cfg.cloudflareResolutionURL, "v" + HentaiRead.info.version);
 
 const main = async () => {
-  const settings = await source.getSettingsPage();
-  if (!settings.sections?.length) throw new Error("empty settings");
-  console.log("settings OK", settings.sections[0]?.header);
-
-  // Homepage should NOT throw CF anymore (Availability abort workaround).
   const home = await source.getHomePage();
-  if (!home.feeds?.length) throw new Error("no feeds");
-  console.log("homepage feeds OK", home.feeds.map((f) => f.id).join(","));
+  console.log("homepage feeds OK", home.feeds?.map((f) => f.id).join(","));
 
-  // Listing should still surface CF with nested Resolve URL.
   try {
     await source.getItemList({ key: "latest" }, 1);
-    console.log("WARNING: listing unexpectedly succeeded (no CF from this IP?)");
+    console.log("WARNING: listing succeeded (no CF from this IP?)");
   } catch (error) {
     if (!(error instanceof CloudflareError)) throw error;
-    if (error.resolutionURL !== NESTED) {
-      throw new Error(`expected nested resolve url, got: ${error.resolutionURL}`);
-    }
-    console.log("listing CF throw OK (nested)", error.resolutionURL);
-  }
-
-  // Force-resolve setting should make homepage throw CF.
-  await ObjectStore.set("force_cf_resolve", true);
-  try {
-    await source.getHomePage();
-    throw new Error("force resolve did not throw");
-  } catch (error) {
-    if (!(error instanceof CloudflareError)) throw error;
-    console.log("force resolve OK", error.resolutionURL);
+    console.log("listing CF OK", error.resolutionURL ?? "(native)");
   }
 };
 

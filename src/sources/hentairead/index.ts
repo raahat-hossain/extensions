@@ -1,3 +1,5 @@
+"use httpclient";
+
 import {
   ContentRating,
   ContentStatus,
@@ -29,32 +31,23 @@ import {
   metaContent,
   stripTags,
 } from "../_shared/html";
+import { createProtectedClient } from "../_shared/client";
+import { throwCloudflare } from "../_shared/cloudflare";
 import {
   absoluteUrl,
+  fetchJson,
+  fetchText,
   joinUrl,
   withQuery,
+  type SourceHttpClient,
 } from "../_shared/http";
-import { throwCloudflare } from "../_shared/cloudflare";
 import { matureItem } from "../_shared/item";
-import {
-  createNetworkClient,
-  netGetJson,
-  netGetText,
-} from "../_shared/network";
 
 const BASE = "https://hentairead.com";
 const MANGA = "hentai";
-/**
- * Nested listing URL for CF Resolve WebView.
- * Root `/` often paints a blank Turnstile shell in Suwatte's WKWebView;
- * `/hentai/` is the real Madara listing Keiyoushi hits and completes better.
- */
+/** Keiyoushi listing path — also the CF Resolve page (docs: cloudflareResolutionURL). */
 const CF_RESOLVE = `${BASE}/hentai/?sortby=new`;
-
-const SETTINGS = {
-  forceResolve: "force_cf_resolve",
-  resetSession: "reset_cf_session",
-} as const;
+const SETTINGS = { forceResolve: "force_cf_resolve" } as const;
 
 type PagesDto = {
   data: { chapter: { images: { src: string }[] } };
@@ -138,6 +131,28 @@ const listingUrl = (page: number, sortby: string): string => {
   return withQuery(path, { sortby });
 };
 
+const getTagId = async (
+  client: SourceHttpClient,
+  tag: string,
+  type: string,
+): Promise<number | undefined> => {
+  const taxonomy = type === "artist" ? "manga_artist" : type;
+  const url = withQuery(`${BASE}/wp-admin/admin-ajax.php`, {
+    action: "search_manga_terms",
+    search: tag,
+    taxonomy,
+  });
+  const data = await fetchJson<TermResult>(url, {
+    client,
+    referer: `${BASE}/`,
+    cloudflareResolutionURL: CF_RESOLVE,
+  });
+  const hit = data.results.find(
+    (item) => item.text.toLowerCase() === tag.toLowerCase(),
+  );
+  return hit?.id;
+};
+
 const parsePageRange = (
   query: string,
   minPages = 1,
@@ -161,22 +176,18 @@ const parsePageRange = (
 };
 
 /**
- * HentaiRead uses NetworkClient (no "use httpclient").
- * Suwatte CF Resolve writes cookies into HTTPCookieStorage.shared / AF —
- * same jar NetworkClient uses. Resolve URL is the nested `/hentai/` listing
- * (root `/` blacks out the challenge WebView).
- *
- * Sources cannot clear Suwatte's cookie jar — that's app Settings →
- * Clear Cookies / Clear Network Cache. Extension settings expose Force Resolve
- * + a challenge WebView button as the closest workaround.
+ * Per Suwatte docs (developers/networking#cloudflare):
+ *   HttpClient + "use httpclient" + cloudflareResolutionURL + useClientForImageRequests
+ * App opens Resolve WebView, then attaches cookies to this.client.
+ * Keiyoushi does no CF code — Mihon CloudflareInterceptor is app-side; same idea.
  */
 export default class Target {
-  client = createNetworkClient();
+  client = createProtectedClient(CF_RESOLVE);
 
   static info: SourceInfo = {
     id: "en.hentairead",
     name: "HentaiRead",
-    version: 1.8,
+    version: 1.9,
     website: BASE,
     thumbnail: "hentairead.png",
     languages: ["en"],
@@ -187,6 +198,7 @@ export default class Target {
     ({
       imageReferer: `${BASE}/`,
       cloudflareResolutionURL: CF_RESOLVE,
+      useClientForImageRequests: true,
     }) as SourceConfiguration;
 
   getSettingsPage = async (): Promise<UIForm> => {
@@ -196,7 +208,7 @@ export default class Target {
         {
           header: "Cloudflare",
           footer:
-            "Sources cannot wipe Suwatte's cookie jar. To clear cache/cookies: Suwatte → Settings → Clear Cookies and Clear Network Cache, then enable Force Resolve below (Submit) and reopen the source. Source Availability tests always abort on CF by design — use Browse → Resolve & Retry instead.",
+            "Official fix if Resolve loops: Suwatte → Settings → Advanced → Network & Caches → Clear Network Cache, then Resolve again. Sources cannot clear the app cookie jar themselves.",
           views: [
             UIWebViewButton({
               title: "Open Challenge Page",
@@ -206,12 +218,6 @@ export default class Target {
               id: SETTINGS.forceResolve,
               title: "Force Resolve on next open",
               currentValue: forceResolve,
-            }),
-            UIToggle({
-              id: SETTINGS.resetSession,
-              title: "Reset CF session (request Resolve)",
-              currentValue: false,
-              defaultValue: false,
             }),
           ],
         },
@@ -223,44 +229,21 @@ export default class Target {
     _id: string,
     data: PopulatedForm,
   ): Promise<void> => {
-    const force = !!(data[SETTINGS.forceResolve] as boolean | undefined);
-    const reset = !!(data[SETTINGS.resetSession] as boolean | undefined);
-    if (force || reset) {
+    if (data[SETTINGS.forceResolve]) {
       await ObjectStore.set(SETTINGS.forceResolve, true);
     } else {
       await ObjectStore.remove(SETTINGS.forceResolve);
     }
   };
 
-  /** Closest thing to "clear auth/session" — forces Resolve next open. */
-  clearAuthentication = async (): Promise<void> => {
-    await ObjectStore.set(SETTINGS.forceResolve, true);
-  };
-
-  private get = (url: string, referer = `${BASE}/`) =>
-    netGetText(this.client, url, {
-      referer,
-      cloudflareResolutionURL: CF_RESOLVE,
-    });
-
-  private getJson = <T>(url: string) =>
-    netGetJson<T>(this.client, url, {
-      referer: `${BASE}/`,
-      cloudflareResolutionURL: CF_RESOLVE,
-    });
-
-  private consumeForceResolve = async (): Promise<void> => {
-    const force = await ObjectStore.boolean(SETTINGS.forceResolve);
-    if (!force) return;
-    await ObjectStore.remove(SETTINGS.forceResolve);
-    throwCloudflare(CF_RESOLVE);
-  };
-
   getHomePage = async (): Promise<HomePage> => {
-    // Do NOT probe CF here — Source Availability aborts Home Page on CF, and
-    // throwing before feeds mount can black-screen. CF is enforced on listing
-    // fetches (and via Force Resolve from settings).
-    await this.consumeForceResolve();
+    // Do not probe here — Availability tests abort on CF during Home Page.
+    // Native HttpClient throws CloudflareError on the first listing fetch;
+    // Force Resolve (settings) can trigger it immediately.
+    if (await ObjectStore.boolean(SETTINGS.forceResolve)) {
+      await ObjectStore.remove(SETTINGS.forceResolve);
+      throwCloudflare(CF_RESOLVE);
+    }
     return {
       feeds: [
         {
@@ -291,6 +274,7 @@ export default class Target {
     SearchFilter(
       "types",
       "Types",
+      // Madara HentaiRead defaults all types on; empty include = all.
       SelectFilter(
         [
           { id: "4", title: "Doujinshi" },
@@ -332,7 +316,11 @@ export default class Target {
     page: number,
   ): Promise<PagedItemList> => {
     const sortby = request.key === "popular" ? "views" : "new";
-    const html = await this.get(listingUrl(page, sortby));
+    const html = await fetchText(listingUrl(page, sortby), {
+      client: this.client,
+      referer: `${BASE}/`,
+      cloudflareResolutionURL: CF_RESOLVE,
+    });
     const items = parseListing(html);
     return { items, isLastPage: !hasNext(html) || items.length === 0 };
   };
@@ -353,6 +341,8 @@ export default class Target {
 
     const types = filters.types as { include?: string[] } | undefined;
     for (const value of types?.include ?? []) {
+      // Repeated categories[] — append as comma-joined encoded pairs via withQuery
+      // by building manually below.
       params[`__cat_${value}`] = value;
     }
 
@@ -366,7 +356,7 @@ export default class Target {
       for (const part of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
         const exclude = part.startsWith("-");
         const name = exclude ? part.slice(1).trim() : part;
-        const id = await this.getTagId(name, type);
+        const id = await getTagId(this.client, name, type);
         if (id == null) {
           throw new Error(
             `${type.replace(/^manga_/, "").replace(/_/g, " ")} not found: ${name}`,
@@ -402,8 +392,11 @@ export default class Target {
       params.pages = `${min}-${max}`;
     }
 
+    // Build URL with repeated array query keys.
     const path =
-      page <= 1 ? `${BASE}/` : joinUrl(BASE, "page", String(page)) + "/";
+      page <= 1
+        ? `${BASE}/`
+        : joinUrl(BASE, "page", String(page)) + "/";
     const pairs: [string, string][] = [];
     for (const [key, value] of Object.entries(params)) {
       if (key.startsWith("__cat_")) {
@@ -434,14 +427,22 @@ export default class Target {
       )
       .join("&");
     const url = query ? `${path}?${query}` : path;
-    const html = await this.get(url);
+    const html = await fetchText(url, {
+      client: this.client,
+      referer: `${BASE}/`,
+      cloudflareResolutionURL: CF_RESOLVE,
+    });
     const items = parseListing(html);
     return { items, isLastPage: !hasNext(html) || items.length === 0 };
   };
 
   getContent = async (contentId: string): Promise<Content> => {
     const url = joinUrl(BASE, MANGA, contentId) + "/";
-    const html = await this.get(url);
+    const html = await fetchText(url, {
+      client: this.client,
+      referer: `${BASE}/`,
+      cloudflareResolutionURL: CF_RESOLVE,
+    });
 
     const title =
       stripTags(
@@ -550,6 +551,7 @@ export default class Target {
   };
 
   getChapters = async (contentId: string): Promise<Chapter[]> => {
+    // Single-chapter galleries; scanlator lifted from content when available.
     const content = await this.getContent(contentId);
     const scanlator =
       (content.context?.scanlator as string | undefined) ||
@@ -576,7 +578,11 @@ export default class Target {
     _chapterId: string,
   ): Promise<ChapterPage[]> => {
     const url = joinUrl(BASE, MANGA, contentId, "english", "p", "1") + "/";
-    const html = await this.get(url, joinUrl(BASE, MANGA, contentId) + "/");
+    const html = await fetchText(url, {
+      client: this.client,
+      referer: joinUrl(BASE, MANGA, contentId) + "/",
+      cloudflareResolutionURL: CF_RESOLVE,
+    });
 
     const extra =
       firstMatch(
@@ -605,22 +611,5 @@ export default class Target {
     return pagesDto.data.chapter.images.map((image) => ({
       url: `${pageBaseUrl}/${image.src}`,
     }));
-  };
-
-  private getTagId = async (
-    tag: string,
-    type: string,
-  ): Promise<number | undefined> => {
-    const taxonomy = type === "artist" ? "manga_artist" : type;
-    const url = withQuery(`${BASE}/wp-admin/admin-ajax.php`, {
-      action: "search_manga_terms",
-      search: tag,
-      taxonomy,
-    });
-    const data = await this.getJson<TermResult>(url);
-    const hit = data.results.find(
-      (item) => item.text.toLowerCase() === tag.toLowerCase(),
-    );
-    return hit?.id;
   };
 }

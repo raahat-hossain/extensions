@@ -787,6 +787,86 @@ var SourcePackage = (() => {
     }
   });
 
+  // __temp__/sources/_shared/base64.js
+  var require_base64 = __commonJS({
+    "__temp__/sources/_shared/base64.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.base64Decode = exports.bytesToBase64 = void 0;
+      var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+      var decodeMap = (() => {
+        const map = new Uint8Array(128);
+        map.fill(255);
+        for (let i = 0; i < alphabet.length; i += 1) {
+          map[alphabet.charCodeAt(i)] = i;
+        }
+        return map;
+      })();
+      var bytesToBase64 = (bytes) => {
+        let output = "";
+        const length = bytes.length;
+        for (let i = 0; i < length; i += 3) {
+          const a = bytes[i];
+          const b = i + 1 < length ? bytes[i + 1] : 0;
+          const c = i + 2 < length ? bytes[i + 2] : 0;
+          const triplet = a << 16 | b << 8 | c;
+          output += alphabet[triplet >> 18 & 63];
+          output += alphabet[triplet >> 12 & 63];
+          output += i + 1 < length ? alphabet[triplet >> 6 & 63] : "=";
+          output += i + 2 < length ? alphabet[triplet & 63] : "=";
+        }
+        return output;
+      };
+      exports.bytesToBase64 = bytesToBase64;
+      var base64Decode = (value) => {
+        var _a, _b, _c, _d;
+        const cleaned = value.replace(/[^A-Za-z0-9+/=]/g, "");
+        if (!cleaned)
+          return "";
+        const bytes = [];
+        for (let i = 0; i < cleaned.length; i += 4) {
+          const enc1 = (_a = decodeMap[cleaned.charCodeAt(i)]) != null ? _a : 255;
+          const enc2 = (_b = decodeMap[cleaned.charCodeAt(i + 1)]) != null ? _b : 255;
+          const enc3 = cleaned[i + 2] === "=" ? 64 : (_c = decodeMap[cleaned.charCodeAt(i + 2)]) != null ? _c : 255;
+          const enc4 = cleaned[i + 3] === "=" ? 64 : (_d = decodeMap[cleaned.charCodeAt(i + 3)]) != null ? _d : 255;
+          if (enc1 === 255 || enc2 === 255 || enc3 === 255 || enc4 === 255) {
+            throw new Error("Invalid base64 input");
+          }
+          bytes.push(enc1 << 2 | enc2 >> 4);
+          if (enc3 !== 64)
+            bytes.push((enc2 & 15) << 4 | enc3 >> 2);
+          if (enc4 !== 64)
+            bytes.push((enc3 & 3) << 6 | enc4);
+        }
+        let result = "";
+        for (let i = 0; i < bytes.length; ) {
+          const c = bytes[i];
+          if (c < 128) {
+            result += String.fromCharCode(c);
+            i += 1;
+          } else if (c < 224 && i + 1 < bytes.length) {
+            result += String.fromCharCode((c & 31) << 6 | bytes[i + 1] & 63);
+            i += 2;
+          } else if (c < 240 && i + 2 < bytes.length) {
+            result += String.fromCharCode((c & 15) << 12 | (bytes[i + 1] & 63) << 6 | bytes[i + 2] & 63);
+            i += 3;
+          } else if (i + 3 < bytes.length) {
+            const code = (c & 7) << 18 | (bytes[i + 1] & 63) << 12 | (bytes[i + 2] & 63) << 6 | bytes[i + 3] & 63;
+            const offset = code - 65536;
+            result += String.fromCharCode(55296 + (offset >> 10), 56320 + (offset & 1023));
+            i += 4;
+          } else {
+            break;
+          }
+        }
+        return result;
+      };
+      exports.base64Decode = base64Decode;
+    }
+  });
+
   // __temp__/sources/_shared/html.js
   var require_html = __commonJS({
     "__temp__/sources/_shared/html.js"(exports) {
@@ -901,21 +981,10 @@ var SourcePackage = (() => {
         return (_c = (_b = candidates.find((value) => !!(value == null ? void 0 : value.trim()))) == null ? void 0 : _b.trim()) != null ? _c : "";
       };
       exports.imageFromTag = imageFromTag;
-      var base64Decode = (value) => {
-        const cleaned = value.replace(/[^A-Za-z0-9+/=]/g, "");
-        if (typeof atob === "function") {
-          try {
-            return decodeURIComponent(Array.from(atob(cleaned), (char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`).join(""));
-          } catch {
-            return atob(cleaned);
-          }
-        }
-        const Buf = globalThis.Buffer;
-        if (Buf)
-          return Buf.from(cleaned, "base64").toString("utf8");
-        throw new Error("No base64 decoder available");
-      };
-      exports.base64Decode = base64Decode;
+      var base64_1 = require_base64();
+      Object.defineProperty(exports, "base64Decode", { enumerable: true, get: function() {
+        return base64_1.base64Decode;
+      } });
     }
   });
 
@@ -1100,6 +1169,31 @@ var SourcePackage = (() => {
     }
   });
 
+  // __temp__/sources/_shared/pool.js
+  var require_pool = __commonJS({
+    "__temp__/sources/_shared/pool.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.mapPool = void 0;
+      var mapPool = async (items, concurrency, worker) => {
+        const results = new Array(items.length);
+        let next = 0;
+        const runners = Array.from({ length: Math.min(Math.max(concurrency, 1), items.length || 1) }, async () => {
+          while (next < items.length) {
+            const index = next;
+            next += 1;
+            results[index] = await worker(items[index], index);
+          }
+        });
+        await Promise.all(runners);
+        return results;
+      };
+      exports.mapPool = mapPool;
+    }
+  });
+
   // __temp__/sources/ehentai/index.js
   var require_ehentai = __commonJS({
     "__temp__/sources/ehentai/index.js"(exports) {
@@ -1112,6 +1206,7 @@ var SourcePackage = (() => {
       var html_1 = require_html();
       var http_1 = require_http2();
       var item_1 = require_item2();
+      var pool_1 = require_pool();
       var BASE_URL = "https://e-hentai.org";
       var COOKIE = "nw=1; uconfig=prn_n";
       var HEADERS = {
@@ -1377,13 +1472,13 @@ var SourcePackage = (() => {
           __publicField(this, "getChapterPages", async (contentId, _chapterId) => {
             const path = pathFromContentId(contentId);
             const pageUrls = await collectPageLinks(path);
-            const pages = [];
-            for (const pageUrl of pageUrls) {
+            const pages = (await (0, pool_1.mapPool)(pageUrls, 6, async (pageUrl) => {
               try {
-                pages.push({ url: await resolveImageUrl(pageUrl) });
+                return { url: await resolveImageUrl(pageUrl) };
               } catch {
+                return null;
               }
-            }
+            })).filter((page) => !!page);
             if (!pages.length) {
               throw new Error(`No readable pages for ${contentId}`);
             }
@@ -1394,8 +1489,9 @@ var SourcePackage = (() => {
       __publicField(Target, "info", {
         id: "all.ehentai",
         name: "E-Hentai",
-        version: 1,
+        version: 1.2,
         website: BASE_URL,
+        thumbnail: "ehentai.png",
         languages: ["all"],
         rating: types_1.ContentRating.MATURE
       });
@@ -1411,7 +1507,7 @@ var SourcePackage = (() => {
       var runtime = require_runtime();
       var sourceModule = require_ehentai();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "all.ehentai", "name": "E-Hentai", "version": 1, "website": "https://e-hentai.org", "languages": ["all"], "rating": 2 };
+      exports.SourceMetadata = { "id": "all.ehentai", "name": "E-Hentai", "version": 1.2, "website": "https://e-hentai.org", "thumbnail": "ehentai.png", "languages": ["all"], "rating": 2 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

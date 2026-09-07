@@ -60,8 +60,9 @@ export default class Target {
   static info: SourceInfo = {
     id: "all.nhentai",
     name: "NHentai",
-    version: 1.0,
+    version: 1.2,
     website: "https://nhentai.net",
+    thumbnail: "nhentai.png",
     languages: ["all", "en", "ja", "zh"],
     rating: ContentRating.MATURE,
   };

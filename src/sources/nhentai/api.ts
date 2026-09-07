@@ -1,4 +1,4 @@
-import { getJson } from "../_shared/http";
+import { getJson, withQuery } from "../_shared/http";
 import type {
   GalleryItem,
   Hentai,
@@ -55,15 +55,16 @@ export const searchGalleries = async (options: {
   page: number;
   sort?: string;
 }): Promise<PaginatedResponse<GalleryItem>> => {
-  const params = new URLSearchParams({
+  // JSC has no URLSearchParams — build the query with encodeURIComponent.
+  const url = withQuery(`${API_URL}/search`, {
     query: options.query.trim() || '""',
     page: String(options.page),
+    sort: options.sort,
   });
-  if (options.sort) params.set("sort", options.sort);
-  return getJson<PaginatedResponse<GalleryItem>>(
-    `${API_URL}/search?${params}`,
-    { headers, referer: `${BASE_URL}/` },
-  );
+  return getJson<PaginatedResponse<GalleryItem>>(url, {
+    headers,
+    referer: `${BASE_URL}/`,
+  });
 };
 
 export const latestGalleries = async (

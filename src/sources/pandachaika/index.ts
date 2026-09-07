@@ -181,8 +181,9 @@ export default class Target {
   static info: SourceInfo = {
     id: "all.pandachaika",
     name: "PandaChaika",
-    version: 1.0,
+    version: 1.2,
     website: BASE_URL,
+    thumbnail: "pandachaika.png",
     languages: ["all"],
     rating: ContentRating.MATURE,
   };
@@ -321,7 +322,9 @@ export default class Target {
       { referer: BASE_URL },
     );
     const downloadPath = detail.download.startsWith("http")
-      ? new URL(detail.download).pathname.replace(/\/download\/?$/, "")
+      ? (detail.download.match(/^https?:\/\/[^/?#]+(\/[^?#]*)?/i)?.[1] ??
+          detail.download)
+          .replace(/\/download\/?$/, "")
       : detail.download.replace(/\/download\/?$/, "");
 
     return [

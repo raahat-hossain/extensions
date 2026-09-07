@@ -77,8 +77,9 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.hentainexus",
     name: "HentaiNexus",
-    version: 1.0,
+    version: 1.2,
     website: BASE_URL,
+    thumbnail: "hentainexus.png",
     languages: ["en"],
     rating: ContentRating.MATURE,
   };

@@ -171,8 +171,9 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.r2-library",
     name: "R2 Library",
-    version: 1.3,
+    version: 1.4,
     website: "https://developers.cloudflare.com/r2/",
+    thumbnail: "r2-library.png",
     languages: ["en"],
     rating: ContentRating.EVERYONE,
   };

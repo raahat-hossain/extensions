@@ -16,6 +16,7 @@ import {
   type SourceInfo,
 } from "@suwatte/toolchain/types";
 import { matureItem } from "../_shared/item";
+import { mapPool } from "../_shared/pool";
 import { fetchText } from "../_shared/http";
 import {
   getGalleryIdsForQuery,
@@ -199,8 +200,9 @@ export default class Target {
   static info: SourceInfo = {
     id: "all.hitomi",
     name: "Hitomi",
-    version: 1.0,
+    version: 1.2,
     website: HITOMI_BASE,
+    thumbnail: "hitomi.png",
     languages: ["all"],
     rating: ContentRating.MATURE,
   };
@@ -361,11 +363,13 @@ export default class Target {
     _chapterId: string,
   ): Promise<ChapterPage[]> => {
     const gallery = await fetchGallery(contentId);
-    const pages: ChapterPage[] = [];
-    for (const file of gallery.files) {
-      const url = await resolveImageUrl(file.hash, { isGif: isGifFile(file) });
-      pages.push({ url });
-    }
-    return pages;
+    if (!gallery.files.length) return [];
+    // Warm gg.js once, then resolve hashes concurrently.
+    await resolveImageUrl(gallery.files[0]!.hash, {
+      isGif: isGifFile(gallery.files[0]!),
+    });
+    return mapPool(gallery.files, 12, async (file) => ({
+      url: await resolveImageUrl(file.hash, { isGif: isGifFile(file) }),
+    }));
   };
 }

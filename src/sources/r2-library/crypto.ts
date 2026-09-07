@@ -1,11 +1,7 @@
-export const bytesToBase64 = (bytes: Uint8Array): string => {
-  const chunk = 0x8000;
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
-  }
-  return btoa(binary);
-};
+import { bytesToBase64 as encodeBase64 } from "../_shared/base64";
+
+export const bytesToBase64 = encodeBase64;
+
 
 /** JSC has no TextEncoder — encode UTF-8 manually. */
 export const utf8Encode = (value: string): Uint8Array => {

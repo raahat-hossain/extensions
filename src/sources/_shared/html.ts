@@ -140,24 +140,4 @@ export const imageFromTag = (imgTag: string): string => {
   return candidates.find((value) => !!value?.trim())?.trim() ?? "";
 };
 
-export const base64Decode = (value: string): string => {
-  const cleaned = value.replace(/[^A-Za-z0-9+/=]/g, "");
-  if (typeof atob === "function") {
-    try {
-      return decodeURIComponent(
-        Array.from(atob(cleaned), (char) =>
-          `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`,
-        ).join(""),
-      );
-    } catch {
-      return atob(cleaned);
-    }
-  }
-  // Node fallback for the emulator when atob is quirky with binary.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const Buf = (globalThis as any).Buffer as
-    | { from(data: string, enc: string): { toString(enc: string): string } }
-    | undefined;
-  if (Buf) return Buf.from(cleaned, "base64").toString("utf8");
-  throw new Error("No base64 decoder available");
-};
+export { base64Decode } from "./base64";

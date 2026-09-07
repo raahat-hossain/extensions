@@ -133,8 +133,9 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.hentai2read",
     name: "Hentai2Read",
-    version: 1.0,
+    version: 1.2,
     website: BASE,
+    thumbnail: "hentai2read.png",
     languages: ["en"],
     rating: ContentRating.MATURE,
   };
@@ -249,13 +250,10 @@ export default class Target {
     if (query.startsWith("https://")) {
       let host = "";
       let path = "";
-      try {
-        const url = new URL(query);
-        host = url.host;
-        path = url.pathname;
-      } catch {
-        throw new Error("Unsupported url");
-      }
+      const match = query.match(/^https?:\/\/([^/?#]+)(\/[^?#]*)?/i);
+      if (!match) throw new Error("Unsupported url");
+      host = match[1] ?? "";
+      path = match[2] ?? "/";
       if (host !== "hentai2read.com" && host !== "www.hentai2read.com") {
         throw new Error("Unsupported url");
       }

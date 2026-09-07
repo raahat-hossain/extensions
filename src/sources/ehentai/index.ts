@@ -19,6 +19,7 @@ import {
 import { allMatches, attr, decodeEntities, firstMatch, stripTags } from "../_shared/html";
 import { absoluteUrl, fetchText, withQuery } from "../_shared/http";
 import { matureItem } from "../_shared/item";
+import { mapPool } from "../_shared/pool";
 
 const BASE_URL = "https://e-hentai.org";
 const COOKIE = "nw=1; uconfig=prn_n";
@@ -198,8 +199,9 @@ export default class Target {
   static info: SourceInfo = {
     id: "all.ehentai",
     name: "E-Hentai",
-    version: 1.0,
+    version: 1.2,
     website: BASE_URL,
+    thumbnail: "ehentai.png",
     languages: ["all"],
     rating: ContentRating.MATURE,
   };
@@ -395,14 +397,17 @@ export default class Target {
   ): Promise<ChapterPage[]> => {
     const path = pathFromContentId(contentId);
     const pageUrls = await collectPageLinks(path);
-    const pages: ChapterPage[] = [];
-    for (const pageUrl of pageUrls) {
-      try {
-        pages.push({ url: await resolveImageUrl(pageUrl) });
-      } catch {
-        // skip broken page slots
-      }
-    }
+    // Parallelize image-url resolution (was sequential N+1).
+    const pages = (
+      await mapPool(pageUrls, 6, async (pageUrl) => {
+        try {
+          return { url: await resolveImageUrl(pageUrl) };
+        } catch {
+          return null;
+        }
+      })
+    ).filter((page): page is { url: string } => !!page);
+
     if (!pages.length) {
       throw new Error(`No readable pages for ${contentId}`);
     }

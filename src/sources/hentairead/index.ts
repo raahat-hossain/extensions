@@ -164,8 +164,9 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.hentairead",
     name: "HentaiRead",
-    version: 1.0,
+    version: 1.2,
     website: BASE,
+    thumbnail: "hentairead.png",
     languages: ["en"],
     rating: ContentRating.MATURE,
   };

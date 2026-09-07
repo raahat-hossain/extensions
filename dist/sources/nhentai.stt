@@ -990,13 +990,15 @@ var SourcePackage = (() => {
       };
       exports.thumbServer = thumbServer;
       var searchGalleries = async (options) => {
-        const params = new URLSearchParams({
+        const url = (0, http_1.withQuery)(`${exports.API_URL}/search`, {
           query: options.query.trim() || '""',
-          page: String(options.page)
+          page: String(options.page),
+          sort: options.sort
         });
-        if (options.sort)
-          params.set("sort", options.sort);
-        return (0, http_1.getJson)(`${exports.API_URL}/search?${params}`, { headers: exports.headers, referer: `${exports.BASE_URL}/` });
+        return (0, http_1.getJson)(url, {
+          headers: exports.headers,
+          referer: `${exports.BASE_URL}/`
+        });
       };
       exports.searchGalleries = searchGalleries;
       var latestGalleries = async (page) => (0, http_1.getJson)(`${exports.API_URL}/galleries?page=${page}`, { headers: exports.headers, referer: `${exports.BASE_URL}/` });
@@ -1342,8 +1344,9 @@ var SourcePackage = (() => {
       __publicField(Target, "info", {
         id: "all.nhentai",
         name: "NHentai",
-        version: 1,
+        version: 1.2,
         website: "https://nhentai.net",
+        thumbnail: "nhentai.png",
         languages: ["all", "en", "ja", "zh"],
         rating: types_1.ContentRating.MATURE
       });
@@ -1359,7 +1362,7 @@ var SourcePackage = (() => {
       var runtime = require_runtime();
       var sourceModule = require_nhentai();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "all.nhentai", "name": "NHentai", "version": 1, "website": "https://nhentai.net", "languages": ["all", "en", "ja", "zh"], "rating": 2 };
+      exports.SourceMetadata = { "id": "all.nhentai", "name": "NHentai", "version": 1.2, "website": "https://nhentai.net", "thumbnail": "nhentai.png", "languages": ["all", "en", "ja", "zh"], "rating": 2 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

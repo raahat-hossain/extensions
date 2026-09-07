@@ -1056,8 +1056,7 @@ var SourcePackage = (() => {
       var thumbPathFromHash = (hash) => hash.replace(/^.*(..)(.)$/, "$2/$1");
       exports.thumbPathFromHash = thumbPathFromHash;
       var resolveImageUrl = async (hash, options = {}) => {
-        const isGif = !!options.isGif;
-        const type = isGif ? "webp" : "avif";
+        const type = "webp";
         const imageId = (0, exports.imageIdFromHash)(hash);
         const offset = await subdomainOffset(imageId);
         if (options.thumbnail) {
@@ -1065,7 +1064,7 @@ var SourcePackage = (() => {
           return `https://${subDomain2}.${CDN}/${type}bigtn/${(0, exports.thumbPathFromHash)(hash)}/${hash}.${type}`;
         }
         const commonId = await commonImageId();
-        const subDomain = isGif ? `w${offset + 1}` : `a${offset + 1}`;
+        const subDomain = `w${offset + 1}`;
         return `https://${subDomain}.${CDN}/${commonId}${imageId}/${hash}.${type}`;
       };
       exports.resolveImageUrl = resolveImageUrl;
@@ -1515,7 +1514,7 @@ var SourcePackage = (() => {
       __publicField(Target, "info", {
         id: "all.hitomi",
         name: "Hitomi",
-        version: 1.2,
+        version: 1.3,
         website: gg_1.HITOMI_BASE,
         thumbnail: "hitomi.png",
         languages: ["all"],
@@ -1533,7 +1532,7 @@ var SourcePackage = (() => {
       var runtime = require_runtime();
       var sourceModule = require_hitomi();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "all.hitomi", "name": "Hitomi", "version": 1.2, "website": "https://hitomi.la", "thumbnail": "hitomi.png", "languages": ["all"], "rating": 2 };
+      exports.SourceMetadata = { "id": "all.hitomi", "name": "Hitomi", "version": 1.3, "website": "https://hitomi.la", "thumbnail": "hitomi.png", "languages": ["all"], "rating": 2 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

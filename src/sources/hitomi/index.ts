@@ -200,7 +200,7 @@ export default class Target {
   static info: SourceInfo = {
     id: "all.hitomi",
     name: "Hitomi",
-    version: 1.2,
+    version: 1.3,
     website: HITOMI_BASE,
     thumbnail: "hitomi.png",
     languages: ["all"],

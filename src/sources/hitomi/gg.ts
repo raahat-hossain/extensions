@@ -76,8 +76,8 @@ export const resolveImageUrl = async (
   hash: string,
   options: { thumbnail?: boolean; isGif?: boolean } = {},
 ): Promise<string> => {
-  const isGif = !!options.isGif;
-  const type = isGif ? "webp" : "avif";
+  // Prefer webp — Suwatte/Nuke's default decoder often cannot decode AVIF.
+  const type = "webp";
   const imageId = imageIdFromHash(hash);
   const offset = await subdomainOffset(imageId);
 
@@ -87,7 +87,7 @@ export const resolveImageUrl = async (
   }
 
   const commonId = await commonImageId();
-  const subDomain = isGif ? `w${offset + 1}` : `a${offset + 1}`;
+  const subDomain = `w${offset + 1}`;
   return `https://${subDomain}.${CDN}/${commonId}${imageId}/${hash}.${type}`;
 };
 

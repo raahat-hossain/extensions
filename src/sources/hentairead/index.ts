@@ -28,6 +28,7 @@ import {
   stripTags,
 } from "../_shared/html";
 import { createProtectedClient } from "../_shared/client";
+import { assertCloudflareCleared } from "../_shared/cloudflare";
 import {
   absoluteUrl,
   fetchJson,
@@ -174,7 +175,7 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.hentairead",
     name: "HentaiRead",
-    version: 1.4,
+    version: 1.5,
     website: BASE,
     thumbnail: "hentairead.png",
     languages: ["en"],
@@ -189,20 +190,25 @@ export default class Target {
       useClientForImageRequests: true,
     }) as SourceConfiguration;
 
-  getHomePage = async (): Promise<HomePage> => ({
-    feeds: [
-      {
-        id: "latest",
-        title: "Latest",
-        content: { list: { key: "latest", disableSorting: true } },
-      },
-      {
-        id: "popular",
-        title: "Popular",
-        content: { list: { key: "popular", disableSorting: true } },
-      },
-    ],
-  });
+  getHomePage = async (): Promise<HomePage> => {
+    // Probe once before feeds fan out — otherwise parallel list fetches can
+    // leave the source spinner hung instead of showing the CF modal.
+    await assertCloudflareCleared(this.client, `${BASE}/`);
+    return {
+      feeds: [
+        {
+          id: "latest",
+          title: "Latest",
+          content: { list: { key: "latest", disableSorting: true } },
+        },
+        {
+          id: "popular",
+          title: "Popular",
+          content: { list: { key: "popular", disableSorting: true } },
+        },
+      ],
+    };
+  };
 
   getSortOptions = async (): Promise<SortOptions> => ({
     options: [

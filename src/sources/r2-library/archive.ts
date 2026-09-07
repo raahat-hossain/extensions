@@ -16,6 +16,15 @@ export const isArchiveName = (name: string): boolean => {
   return lower.endsWith(".cbz") || lower.endsWith(".zip");
 };
 
+export const isImageName = (name: string): boolean => {
+  if (!name || name.endsWith("/")) return false;
+  if (name.startsWith(".")) return false;
+  const lower = name.toLowerCase();
+  const dot = lower.lastIndexOf(".");
+  if (dot < 0) return false;
+  return IMAGE_EXTENSIONS.has(lower.slice(dot));
+};
+
 export const isCoverName = (name: string): boolean =>
   /^cover\.(png|jpe?g|webp|gif|avif)$/i.test(name);
 

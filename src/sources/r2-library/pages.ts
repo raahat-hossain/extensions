@@ -5,18 +5,9 @@ import { bytesToBase64 } from "./crypto";
 import {
   basename,
   isArchiveName,
+  isImageName,
   naturalCompare,
 } from "./archive";
-
-const IMAGE_EXTENSIONS = new Set([
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".webp",
-  ".gif",
-  ".avif",
-  ".bmp",
-]);
 
 const MAX_ARCHIVE_BYTES = 80 * 1024 * 1024; // 80 MiB compressed
 const MAX_PAGES = 400;
@@ -50,10 +41,7 @@ const isImagePath = (name: string): boolean => {
   if (!name || name.endsWith("/")) return false;
   if (name.startsWith("__MACOSX/")) return false;
   if (name.split("/").some((part) => part.startsWith("."))) return false;
-  const lower = name.toLowerCase();
-  const dot = lower.lastIndexOf(".");
-  if (dot < 0) return false;
-  return IMAGE_EXTENSIONS.has(lower.slice(dot));
+  return isImageName(basename(name));
 };
 
 const pruneSessions = (): void => {
@@ -96,7 +84,7 @@ export const openArchiveSession = (
 
   if (archiveBytes.byteLength > MAX_ARCHIVE_BYTES) {
     throw new Error(
-      `Chapter archive is too large (${Math.round(archiveBytes.byteLength / (1024 * 1024))} MiB). Keep CBZs under ${MAX_ARCHIVE_BYTES / (1024 * 1024)} MiB or store pages as individual image objects.`,
+      `Chapter archive is too large (${Math.round(archiveBytes.byteLength / (1024 * 1024))} MiB). Keep CBZs under ${MAX_ARCHIVE_BYTES / (1024 * 1024)} MiB, or use a chapter folder of images instead (no size limit).`,
     );
   }
 
@@ -129,7 +117,7 @@ export const openArchiveSession = (
   }
   if (pages.length > MAX_PAGES) {
     throw new Error(
-      `Archive has ${pages.length} pages (max ${MAX_PAGES}). Split the CBZ or store images as individual objects.`,
+      `Archive has ${pages.length} pages (max ${MAX_PAGES}). Split the CBZ or store images as a chapter folder.`,
     );
   }
 
@@ -141,10 +129,11 @@ export const openArchiveSession = (
   };
 };
 
-/** List image objects under a chapter prefix and return signed-ready keys. */
-export const listImageKeys = (
-  objectKeys: string[],
-): string[] =>
+/** Image object keys under a prefix (natural order by filename). */
+export const listImageKeys = (objectKeys: string[]): string[] =>
   objectKeys
-    .filter((key) => isImagePath(basename(key)) && !isArchiveName(basename(key)))
-    .sort(naturalCompare);
+    .filter((key) => {
+      const name = basename(key);
+      return isImageName(name) && !isArchiveName(name) && !name.startsWith(".");
+    })
+    .sort((left, right) => naturalCompare(basename(left), basename(right)));

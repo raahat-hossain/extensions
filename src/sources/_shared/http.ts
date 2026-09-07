@@ -1,6 +1,7 @@
 /** Shared HTTP helpers for Suwatte JSC sources. */
 
 import {
+  cloudflareFromHeaders,
   looksLikeCloudflare,
   originOf,
   throwCloudflare,
@@ -50,12 +51,8 @@ const assertNotCloudflare = (
   resolutionURL?: string,
 ): void => {
   const resolution = resolutionURL ?? originOf(url);
-  if (looksLikeCloudflare(body) || headers.get("cf-mitigated")) {
+  if (cloudflareFromHeaders(status, headers) || looksLikeCloudflare(body)) {
     throwCloudflare(resolution);
-  }
-  if ([403, 503].includes(status)) {
-    const server = (headers.get("server") ?? "").toLowerCase();
-    if (server.includes("cloudflare")) throwCloudflare(resolution);
   }
 };
 
@@ -69,6 +66,10 @@ export const fetchText = async (
     headers: mergeHeaders(options),
     timeout: options?.timeout,
   });
+  // Throw on CF headers before waiting to fully materialize/parse body UI-side.
+  if (cloudflareFromHeaders(response.status, response.headers)) {
+    throwCloudflare(options?.cloudflareResolutionURL ?? originOf(url));
+  }
   const body = await response.text();
   assertNotCloudflare(
     url,
@@ -107,6 +108,9 @@ export const postForm = async (
       ...mergeHeaders(options),
     },
   });
+  if (cloudflareFromHeaders(response.status, response.headers)) {
+    throwCloudflare(options?.cloudflareResolutionURL ?? originOf(url));
+  }
   const text = await response.text();
   assertNotCloudflare(
     url,
@@ -136,6 +140,9 @@ export const postEmpty = async (
       ...mergeHeaders(options),
     },
   });
+  if (cloudflareFromHeaders(response.status, response.headers)) {
+    throwCloudflare(options?.cloudflareResolutionURL ?? originOf(url));
+  }
   const text = await response.text();
   assertNotCloudflare(
     url,

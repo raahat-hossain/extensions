@@ -3298,7 +3298,7 @@ var SourcePackage = (() => {
       init_Buffer();
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
-      exports.extractArchivePages = exports.parseChapterNumber = exports.naturalCompare = exports.folderIdFromPrefix = exports.basename = exports.extractArchivePageDataUrl = exports.findArchiveByChapterName = exports.archiveStem = exports.parseChapterPageRef = exports.isDetailsName = exports.isCoverName = exports.isArchiveName = void 0;
+      exports.extractArchivePages = exports.parseChapterNumber = exports.naturalCompare = exports.folderIdFromPrefix = exports.basename = exports.extractArchivePageDataUrl = exports.findArchiveByChapterName = exports.archiveStem = exports.parseChapterPageRef = exports.isDetailsName = exports.isCoverName = exports.isImageName = exports.isArchiveName = void 0;
       var fflate_1 = require_browser();
       var crypto_1 = require_crypto();
       var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set([
@@ -3315,6 +3315,18 @@ var SourcePackage = (() => {
         return lower.endsWith(".cbz") || lower.endsWith(".zip");
       };
       exports.isArchiveName = isArchiveName;
+      var isImageName = (name) => {
+        if (!name || name.endsWith("/"))
+          return false;
+        if (name.startsWith("."))
+          return false;
+        const lower = name.toLowerCase();
+        const dot = lower.lastIndexOf(".");
+        if (dot < 0)
+          return false;
+        return IMAGE_EXTENSIONS.has(lower.slice(dot));
+      };
+      exports.isImageName = isImageName;
       var isCoverName = (name) => /^cover\.(png|jpe?g|webp|gif|avif)$/i.test(name);
       exports.isCoverName = isCoverName;
       var isDetailsName = (name) => /^(details|info|metadata|series)\.json$/i.test(name);
@@ -3948,15 +3960,6 @@ var SourcePackage = (() => {
       var fflate_1 = require_browser();
       var crypto_1 = require_crypto();
       var archive_1 = require_archive();
-      var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set([
-        ".jpg",
-        ".jpeg",
-        ".png",
-        ".webp",
-        ".gif",
-        ".avif",
-        ".bmp"
-      ]);
       var MAX_ARCHIVE_BYTES = 80 * 1024 * 1024;
       var MAX_PAGES = 400;
       var SESSION_TTL_MS = 30 * 60 * 1e3;
@@ -3983,11 +3986,7 @@ var SourcePackage = (() => {
           return false;
         if (name.split("/").some((part) => part.startsWith(".")))
           return false;
-        const lower = name.toLowerCase();
-        const dot = lower.lastIndexOf(".");
-        if (dot < 0)
-          return false;
-        return IMAGE_EXTENSIONS.has(lower.slice(dot));
+        return (0, archive_1.isImageName)((0, archive_1.basename)(name));
       };
       var pruneSessions = () => {
         const cutoff = Date.now() - SESSION_TTL_MS;
@@ -4020,7 +4019,7 @@ var SourcePackage = (() => {
       var openArchiveSession = (archiveBytes) => {
         pruneSessions();
         if (archiveBytes.byteLength > MAX_ARCHIVE_BYTES) {
-          throw new Error(`Chapter archive is too large (${Math.round(archiveBytes.byteLength / (1024 * 1024))} MiB). Keep CBZs under ${MAX_ARCHIVE_BYTES / (1024 * 1024)} MiB or store pages as individual image objects.`);
+          throw new Error(`Chapter archive is too large (${Math.round(archiveBytes.byteLength / (1024 * 1024))} MiB). Keep CBZs under ${MAX_ARCHIVE_BYTES / (1024 * 1024)} MiB, or use a chapter folder of images instead (no size limit).`);
         }
         let files;
         try {
@@ -4042,7 +4041,7 @@ var SourcePackage = (() => {
           throw new Error("Archive contained no readable image pages");
         }
         if (pages.length > MAX_PAGES) {
-          throw new Error(`Archive has ${pages.length} pages (max ${MAX_PAGES}). Split the CBZ or store images as individual objects.`);
+          throw new Error(`Archive has ${pages.length} pages (max ${MAX_PAGES}). Split the CBZ or store images as a chapter folder.`);
         }
         const sessionId = newSessionId();
         sessions.set(sessionId, { createdAt: Date.now(), pages });
@@ -4052,7 +4051,10 @@ var SourcePackage = (() => {
         };
       };
       exports.openArchiveSession = openArchiveSession;
-      var listImageKeys = (objectKeys) => objectKeys.filter((key) => isImagePath((0, archive_1.basename)(key)) && !(0, archive_1.isArchiveName)((0, archive_1.basename)(key))).sort(archive_1.naturalCompare);
+      var listImageKeys = (objectKeys) => objectKeys.filter((key) => {
+        const name = (0, archive_1.basename)(key);
+        return (0, archive_1.isImageName)(name) && !(0, archive_1.isArchiveName)(name) && !name.startsWith(".");
+      }).sort((left, right) => (0, archive_1.naturalCompare)((0, archive_1.basename)(left), (0, archive_1.basename)(right)));
       exports.listImageKeys = listImageKeys;
     }
   });
@@ -4072,6 +4074,25 @@ var SourcePackage = (() => {
       var details_1 = require_details();
       var pages_1 = require_pages();
       var r2_1 = require_r2();
+      var encodeChapterId = (chapter) => {
+        if (chapter.kind === "zip")
+          return `zip:${encodeURIComponent(chapter.key)}`;
+        if (chapter.kind === "dir")
+          return `dir:${encodeURIComponent(chapter.prefix)}`;
+        return `loose:${encodeURIComponent(chapter.prefix)}`;
+      };
+      var decodeChapterId = (chapterId) => {
+        if (chapterId.startsWith("zip:")) {
+          return { kind: "zip", value: decodeURIComponent(chapterId.slice(4)) };
+        }
+        if (chapterId.startsWith("dir:")) {
+          return { kind: "dir", value: decodeURIComponent(chapterId.slice(4)) };
+        }
+        if (chapterId.startsWith("loose:")) {
+          return { kind: "loose", value: decodeURIComponent(chapterId.slice(6)) };
+        }
+        return { kind: "zip", value: decodeURIComponent(chapterId) };
+      };
       var rootPrefix = (prefix) => {
         const value = prefix.replace(/^\/+|\/+$/g, "");
         return value ? `${value}/` : "";
@@ -4094,23 +4115,67 @@ var SourcePackage = (() => {
         };
       };
       var buildEntries = async (config, folderPrefixes, root) => {
-        var _a, _b;
+        var _a, _b, _c;
         const entries = [];
         const rootId = root.replace(/\/+$/, "");
         for (const prefix of folderPrefixes) {
           const id = (0, archive_1.folderIdFromPrefix)(prefix, rootId);
           if (!id || id.includes("/"))
             continue;
-          const children = await (0, r2_1.listAll)(config, prefix);
-          const coverKey = (_a = children.objects.find((object) => (0, archive_1.isCoverName)((0, archive_1.basename)(object.key)))) == null ? void 0 : _a.key;
-          const detailsKey = (_b = children.objects.find((object) => (0, archive_1.isDetailsName)((0, archive_1.basename)(object.key)))) == null ? void 0 : _b.key;
-          const archives = children.objects.filter((object) => (0, archive_1.isArchiveName)((0, archive_1.basename)(object.key))).map((object) => ({
+          const listed = await (0, r2_1.listAll)(config, prefix, "/");
+          const coverKey = (_a = listed.objects.find((object) => (0, archive_1.isCoverName)((0, archive_1.basename)(object.key)))) == null ? void 0 : _a.key;
+          const detailsKey = (_b = listed.objects.find((object) => (0, archive_1.isDetailsName)((0, archive_1.basename)(object.key)))) == null ? void 0 : _b.key;
+          const archives = listed.objects.filter((object) => (0, archive_1.isArchiveName)((0, archive_1.basename)(object.key))).map((object) => ({
             key: object.key,
             name: (0, archive_1.basename)(object.key)
           })).sort((left, right) => (0, archive_1.naturalCompare)(left.name, right.name));
-          if (!archives.length && !detailsKey && !coverKey)
+          const folders = listed.prefixes.map((childPrefix) => {
+            const name = (0, archive_1.folderIdFromPrefix)(childPrefix, prefix.replace(/\/+$/, ""));
+            if (!name || name.includes("/"))
+              return null;
+            return {
+              kind: "dir",
+              prefix: childPrefix.endsWith("/") ? childPrefix : `${childPrefix}/`,
+              name
+            };
+          }).filter((value) => !!value).sort((left, right) => (0, archive_1.naturalCompare)(left.name, right.name));
+          const looseImages = listed.objects.filter((object) => {
+            const name = (0, archive_1.basename)(object.key);
+            return (0, archive_1.isImageName)(name) && !(0, archive_1.isCoverName)(name);
+          });
+          const chapters = [
+            ...folders,
+            ...archives.map((archive) => ({
+              kind: "zip",
+              key: archive.key,
+              name: archive.name
+            }))
+          ];
+          if (looseImages.length && !folders.length) {
+            chapters.unshift({
+              kind: "loose",
+              prefix,
+              name: "Chapter"
+            });
+          } else if (looseImages.length && folders.length) {
+            chapters.push({
+              kind: "loose",
+              prefix,
+              name: "Root"
+            });
+          }
+          chapters.sort((left, right) => (0, archive_1.naturalCompare)(left.name, right.name));
+          const inferredCover = coverKey != null ? coverKey : (_c = looseImages.sort((a, b) => (0, archive_1.naturalCompare)((0, archive_1.basename)(a.key), (0, archive_1.basename)(b.key)))[0]) == null ? void 0 : _c.key;
+          if (!chapters.length && !detailsKey && !inferredCover)
             continue;
-          entries.push({ id, prefix, coverKey, detailsKey, archives });
+          entries.push({
+            id,
+            prefix,
+            coverKey: inferredCover,
+            detailsKey,
+            archives,
+            chapters
+          });
         }
         return entries.sort((left, right) => (0, archive_1.naturalCompare)(left.id, right.id));
       };
@@ -4173,7 +4238,7 @@ var SourcePackage = (() => {
               sections: [
                 {
                   header: "Cloudflare R2",
-                  footer: "Needs an Object Read API token. Leave Endpoint blank for https://<accountId>.r2.cloudflarestorage.com. Leave Root Prefix empty when title folders are at the bucket root (your setup: bucket=manga, folders at root).",
+                  footer: "Object Read API token required. Leave Endpoint blank for the default R2 S3 URL. Leave Root Prefix empty when title folders sit at the bucket root. Chapters can be .cbz/.zip OR folders of images (preferred for large chapters).",
                   views: [
                     (0, types_1.UITextField)({
                       id: config_1.SETTINGS.accountId,
@@ -4276,17 +4341,25 @@ var SourcePackage = (() => {
             const config = await (0, config_1.loadConfig)();
             const entry = await findEntry(config, contentId);
             const details = await loadDetails(config, entry);
+            let coverKey = entry.coverKey;
+            if (!coverKey) {
+              const firstDir = entry.chapters.find((chapter) => chapter.kind === "dir");
+              if (firstDir && firstDir.kind === "dir") {
+                const listed = await (0, r2_1.listAll)(config, firstDir.prefix);
+                coverKey = (0, pages_1.listImageKeys)(listed.objects.map((object) => object.key))[0];
+              }
+            }
             const coverImage = await (0, cover_1.resolveCoverImage)({
               config,
               contentId,
-              coverKey: entry.coverKey,
+              coverKey,
               details,
               archives: entry.archives,
               allowArchiveExtract: true,
               fallbackToPlaceholder: true
             });
             if (!coverImage) {
-              throw new Error(`Missing cover for ${contentId}. Add cover.(png|jpg|webp), or set details.cover to an http(s) URL or chapter page ref like "chapter 4_24.png".`);
+              throw new Error(`Missing cover for ${contentId}. Add cover.(png|jpg|webp), put images in a chapter folder, or set details.cover.`);
             }
             if (details) {
               return (0, details_1.contentFromDetails)({ ...details, cover: void 0 }, { id: contentId, coverImage });
@@ -4300,33 +4373,46 @@ var SourcePackage = (() => {
               summary: `Imported from R2 folder ${contentId}/`,
               additionalDetails: {
                 Folder: contentId,
-                Chapters: String(entry.archives.length)
+                Chapters: String(entry.chapters.length)
               }
             };
           });
           __publicField(this, "getChapters", async (contentId) => {
             const config = await (0, config_1.loadConfig)();
             const entry = await findEntry(config, contentId);
-            return entry.archives.map((archive, index) => ({
-              id: encodeURIComponent(archive.key),
+            return entry.chapters.map((chapter, index) => ({
+              id: encodeChapterId(chapter),
               index,
-              number: (0, archive_1.parseChapterNumber)(archive.name, index + 1),
+              number: (0, archive_1.parseChapterNumber)(chapter.name, index + 1),
               language: "en",
-              title: archive.name.replace(/\.(cbz|zip)$/i, ""),
+              title: chapter.name.replace(/\.(cbz|zip)$/i, ""),
               date: /* @__PURE__ */ new Date()
             }));
           });
           __publicField(this, "getChapterPages", async (_contentId, chapterId) => {
             const config = await (0, config_1.loadConfig)();
-            const key = decodeURIComponent(chapterId);
-            const bytes = await (0, r2_1.getObjectBytes)(config, key);
+            const decoded = decodeChapterId(chapterId);
+            if (decoded.kind === "dir" || decoded.kind === "loose") {
+              const prefix = decoded.value.endsWith("/") ? decoded.value : `${decoded.value}/`;
+              const listed = decoded.kind === "loose" ? await (0, r2_1.listAll)(config, prefix, "/") : await (0, r2_1.listAll)(config, prefix);
+              const keys = decoded.kind === "loose" ? (0, pages_1.listImageKeys)(listed.objects.filter((object) => {
+                const name = (0, archive_1.basename)(object.key);
+                return (0, archive_1.isImageName)(name) && !(0, archive_1.isCoverName)(name);
+              }).map((object) => object.key)) : (0, pages_1.listImageKeys)(listed.objects.map((object) => object.key));
+              if (!keys.length) {
+                throw new Error(`No images found under ${prefix}`);
+              }
+              return keys.map((key) => ({
+                url: (0, r2_1.presignGet)(config, key, 60 * 60 * 6)
+              }));
+            }
+            const bytes = await (0, r2_1.getObjectBytes)(config, decoded.value);
             const { urls } = (0, pages_1.openArchiveSession)(bytes);
             return urls.map((url) => ({ url }));
           });
           /**
            * Resolve session page URLs to data: URIs so Nuke never hits a fake host.
-           * Bytes stay in JSC until each page is actually requested.
-           * Accepts both NetworkRequest (new API) and bare URL string (older runtimes).
+           * Presigned R2 URLs pass through unchanged.
            */
           __publicField(this, "willRequestImage", async (request) => {
             const url = typeof request === "string" ? request : request.url;
@@ -4341,7 +4427,7 @@ var SourcePackage = (() => {
       __publicField(Target, "info", {
         id: "en.r2-library",
         name: "R2 Library",
-        version: 1.5,
+        version: 1.6,
         website: "https://developers.cloudflare.com/r2/",
         thumbnail: "r2-library.png",
         languages: ["en"],
@@ -4359,7 +4445,7 @@ var SourcePackage = (() => {
       var runtime = require_runtime();
       var sourceModule = require_r2_library();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.5, "website": "https://developers.cloudflare.com/r2/", "thumbnail": "r2-library.png", "languages": ["en"], "rating": 0 };
+      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.6, "website": "https://developers.cloudflare.com/r2/", "thumbnail": "r2-library.png", "languages": ["en"], "rating": 0 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

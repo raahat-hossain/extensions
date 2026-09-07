@@ -27,6 +27,7 @@ import {
   stripTags,
 } from "../_shared/html";
 import { createProtectedClient } from "../_shared/client";
+import { assertCloudflareCleared } from "../_shared/cloudflare";
 import { absoluteUrl, fetchText, postForm } from "../_shared/http";
 import { matureItem } from "../_shared/item";
 import { CATEGORIES, TAGS } from "./tags";
@@ -136,7 +137,7 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.hentai2read",
     name: "Hentai2Read",
-    version: 1.3,
+    version: 1.4,
     website: BASE,
     thumbnail: "hentai2read.png",
     languages: ["en"],
@@ -150,20 +151,23 @@ export default class Target {
       useClientForImageRequests: true,
     }) as SourceConfiguration;
 
-  getHomePage = async (): Promise<HomePage> => ({
-    feeds: [
-      {
-        id: "popular",
-        title: "Most Popular",
-        content: { list: { key: "popular", disableSorting: true } },
-      },
-      {
-        id: "latest",
-        title: "Last Updated",
-        content: { list: { key: "latest", disableSorting: true } },
-      },
-    ],
-  });
+  getHomePage = async (): Promise<HomePage> => {
+    await assertCloudflareCleared(this.client, `${BASE}/`);
+    return {
+      feeds: [
+        {
+          id: "popular",
+          title: "Most Popular",
+          content: { list: { key: "popular", disableSorting: true } },
+        },
+        {
+          id: "latest",
+          title: "Last Updated",
+          content: { list: { key: "latest", disableSorting: true } },
+        },
+      ],
+    };
+  };
 
   getSortOptions = async (): Promise<SortOptions> => ({
     options: [

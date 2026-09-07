@@ -14,6 +14,7 @@ import {
   type SourceInfo,
 } from "@suwatte/toolchain/types";
 import { createProtectedClient } from "../_shared/client";
+import { assertCloudflareCleared } from "../_shared/cloudflare";
 import {
   fetchMadaraChapters,
   fetchMadaraContent,
@@ -42,7 +43,7 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.novelcrow",
     name: "NovelCrow",
-    version: 1.4,
+    version: 1.5,
     website: BASE,
     thumbnail: "novelcrow.png",
     languages: ["en"],
@@ -56,20 +57,23 @@ export default class Target {
       useClientForImageRequests: true,
     }) as SourceConfiguration;
 
-  getHomePage = async (): Promise<HomePage> => ({
-    feeds: [
-      {
-        id: "trending",
-        title: "Trending",
-        content: { list: { key: "trending", disableSorting: true } },
-      },
-      {
-        id: "latest",
-        title: "Latest",
-        content: { list: { key: "latest", disableSorting: true } },
-      },
-    ],
-  });
+  getHomePage = async (): Promise<HomePage> => {
+    await assertCloudflareCleared(this.client, `${BASE}/`);
+    return {
+      feeds: [
+        {
+          id: "trending",
+          title: "Trending",
+          content: { list: { key: "trending", disableSorting: true } },
+        },
+        {
+          id: "latest",
+          title: "Latest",
+          content: { list: { key: "latest", disableSorting: true } },
+        },
+      ],
+    };
+  };
 
   getSortOptions = async (): Promise<SortOptions> => ({
     options: [

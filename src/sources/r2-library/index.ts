@@ -25,6 +25,7 @@ import {
   isArchiveName,
   isCoverName,
   isDetailsName,
+  isImageName,
   naturalCompare,
   parseChapterNumber,
 } from "./archive";
@@ -35,15 +36,44 @@ import {
   parseDetailsJson,
   type DetailsFile,
 } from "./details";
-import { dataUrlForPage, openArchiveSession } from "./pages";
-import { getObjectBytes, getObjectText, listAll } from "./r2";
+import { dataUrlForPage, listImageKeys, openArchiveSession } from "./pages";
+import { getObjectBytes, getObjectText, listAll, presignGet } from "./r2";
+
+type ChapterRef =
+  | { kind: "zip"; key: string; name: string }
+  | { kind: "dir"; prefix: string; name: string }
+  | { kind: "loose"; prefix: string; name: string };
 
 type EntryAssets = {
   id: string;
   prefix: string;
   coverKey?: string;
   detailsKey?: string;
+  /** Zip/cbz archives kept for cover extraction fallbacks. */
   archives: { key: string; name: string }[];
+  chapters: ChapterRef[];
+};
+
+const encodeChapterId = (chapter: ChapterRef): string => {
+  if (chapter.kind === "zip") return `zip:${encodeURIComponent(chapter.key)}`;
+  if (chapter.kind === "dir") return `dir:${encodeURIComponent(chapter.prefix)}`;
+  return `loose:${encodeURIComponent(chapter.prefix)}`;
+};
+
+const decodeChapterId = (
+  chapterId: string,
+): { kind: ChapterRef["kind"]; value: string } => {
+  if (chapterId.startsWith("zip:")) {
+    return { kind: "zip", value: decodeURIComponent(chapterId.slice(4)) };
+  }
+  if (chapterId.startsWith("dir:")) {
+    return { kind: "dir", value: decodeURIComponent(chapterId.slice(4)) };
+  }
+  if (chapterId.startsWith("loose:")) {
+    return { kind: "loose", value: decodeURIComponent(chapterId.slice(6)) };
+  }
+  // Legacy ids were bare encodeURIComponent(archiveKey).
+  return { kind: "zip", value: decodeURIComponent(chapterId) };
 };
 
 /** Empty prefix = bucket root. Never emit a bare "/" list prefix. */
@@ -84,14 +114,15 @@ const buildEntries = async (
     const id = folderIdFromPrefix(prefix, rootId);
     if (!id || id.includes("/")) continue;
 
-    const children = await listAll(config, prefix);
-    const coverKey = children.objects.find((object) =>
+    // Delimiter listing: chapter subfolders as common prefixes + files at this level.
+    const listed = await listAll(config, prefix, "/");
+    const coverKey = listed.objects.find((object) =>
       isCoverName(basename(object.key)),
     )?.key;
-    const detailsKey = children.objects.find((object) =>
+    const detailsKey = listed.objects.find((object) =>
       isDetailsName(basename(object.key)),
     )?.key;
-    const archives = children.objects
+    const archives = listed.objects
       .filter((object) => isArchiveName(basename(object.key)))
       .map((object) => ({
         key: object.key,
@@ -99,9 +130,68 @@ const buildEntries = async (
       }))
       .sort((left, right) => naturalCompare(left.name, right.name));
 
-    if (!archives.length && !detailsKey && !coverKey) continue;
+    const folders: ChapterRef[] = listed.prefixes
+      .map((childPrefix) => {
+        const name = folderIdFromPrefix(childPrefix, prefix.replace(/\/+$/, ""));
+        if (!name || name.includes("/")) return null;
+        return {
+          kind: "dir" as const,
+          prefix: childPrefix.endsWith("/") ? childPrefix : `${childPrefix}/`,
+          name,
+        };
+      })
+      .filter((value): value is ChapterRef & { kind: "dir" } => !!value)
+      .sort((left, right) => naturalCompare(left.name, right.name));
 
-    entries.push({ id, prefix, coverKey, detailsKey, archives });
+    const looseImages = listed.objects.filter((object) => {
+      const name = basename(object.key);
+      return isImageName(name) && !isCoverName(name);
+    });
+
+    const chapters: ChapterRef[] = [
+      ...folders,
+      ...archives.map((archive) => ({
+        kind: "zip" as const,
+        key: archive.key,
+        name: archive.name,
+      })),
+    ];
+
+    // Images directly under the title folder = single loose chapter.
+    if (looseImages.length && !folders.length) {
+      chapters.unshift({
+        kind: "loose",
+        prefix,
+        name: "Chapter",
+      });
+    } else if (looseImages.length && folders.length) {
+      // Mixed layout: keep loose images as their own chapter at the end.
+      chapters.push({
+        kind: "loose",
+        prefix,
+        name: "Root",
+      });
+    }
+
+    chapters.sort((left, right) => naturalCompare(left.name, right.name));
+
+    // Prefer explicit cover; else first loose image at title root.
+    const inferredCover =
+      coverKey ??
+      looseImages.sort((a, b) =>
+        naturalCompare(basename(a.key), basename(b.key)),
+      )[0]?.key;
+
+    if (!chapters.length && !detailsKey && !inferredCover) continue;
+
+    entries.push({
+      id,
+      prefix,
+      coverKey: inferredCover,
+      detailsKey,
+      archives,
+      chapters,
+    });
   }
 
   return entries.sort((left, right) => naturalCompare(left.id, right.id));
@@ -172,7 +262,7 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.r2-library",
     name: "R2 Library",
-    version: 1.5,
+    version: 1.6,
     website: "https://developers.cloudflare.com/r2/",
     thumbnail: "r2-library.png",
     languages: ["en"],
@@ -196,7 +286,7 @@ export default class Target {
         {
           header: "Cloudflare R2",
           footer:
-            "Needs an Object Read API token. Leave Endpoint blank for https://<accountId>.r2.cloudflarestorage.com. Leave Root Prefix empty when title folders are at the bucket root (your setup: bucket=manga, folders at root).",
+            "Object Read API token required. Leave Endpoint blank for the default R2 S3 URL. Leave Root Prefix empty when title folders sit at the bucket root. Chapters can be .cbz/.zip OR folders of images (preferred for large chapters).",
           views: [
             UITextField({
               id: SETTINGS.accountId,
@@ -318,10 +408,21 @@ export default class Target {
     const config = await loadConfig();
     const entry = await findEntry(config, contentId);
     const details = await loadDetails(config, entry);
+
+    let coverKey = entry.coverKey;
+    if (!coverKey) {
+      // Fall back to first page of the first folder chapter.
+      const firstDir = entry.chapters.find((chapter) => chapter.kind === "dir");
+      if (firstDir && firstDir.kind === "dir") {
+        const listed = await listAll(config, firstDir.prefix);
+        coverKey = listImageKeys(listed.objects.map((object) => object.key))[0];
+      }
+    }
+
     const coverImage = await resolveCoverImage({
       config,
       contentId,
-      coverKey: entry.coverKey,
+      coverKey,
       details,
       archives: entry.archives,
       allowArchiveExtract: true,
@@ -330,7 +431,7 @@ export default class Target {
 
     if (!coverImage) {
       throw new Error(
-        `Missing cover for ${contentId}. Add cover.(png|jpg|webp), or set details.cover to an http(s) URL or chapter page ref like "chapter 4_24.png".`,
+        `Missing cover for ${contentId}. Add cover.(png|jpg|webp), put images in a chapter folder, or set details.cover.`,
       );
     }
 
@@ -350,7 +451,7 @@ export default class Target {
       summary: `Imported from R2 folder ${contentId}/`,
       additionalDetails: {
         Folder: contentId,
-        Chapters: String(entry.archives.length),
+        Chapters: String(entry.chapters.length),
       },
     };
   };
@@ -359,12 +460,12 @@ export default class Target {
     const config = await loadConfig();
     const entry = await findEntry(config, contentId);
 
-    return entry.archives.map((archive, index) => ({
-      id: encodeURIComponent(archive.key),
+    return entry.chapters.map((chapter, index) => ({
+      id: encodeChapterId(chapter),
       index,
-      number: parseChapterNumber(archive.name, index + 1),
+      number: parseChapterNumber(chapter.name, index + 1),
       language: "en",
-      title: archive.name.replace(/\.(cbz|zip)$/i, ""),
+      title: chapter.name.replace(/\.(cbz|zip)$/i, ""),
       date: new Date(),
     }));
   };
@@ -374,19 +475,46 @@ export default class Target {
     chapterId: string,
   ): Promise<ChapterPage[]> => {
     const config = await loadConfig();
-    const key = decodeURIComponent(chapterId);
-    const bytes = await getObjectBytes(config, key);
-    // Keep image bytes in a JSC session and only send tiny page URLs across
-    // the bridge. Returning every page as base64/raw here OOMs Suwatte on
-    // real CBZs when the whole chapter is marshalled at once.
+    const decoded = decodeChapterId(chapterId);
+
+    if (decoded.kind === "dir" || decoded.kind === "loose") {
+      const prefix = decoded.value.endsWith("/")
+        ? decoded.value
+        : `${decoded.value}/`;
+      // Folder chapters: list image objects and return presigned URLs.
+      // No unzip / no 80 MiB cap — Suwatte loads pages like any remote source.
+      const listed =
+        decoded.kind === "loose"
+          ? await listAll(config, prefix, "/")
+          : await listAll(config, prefix);
+      const keys =
+        decoded.kind === "loose"
+          ? listImageKeys(
+              listed.objects
+                .filter((object) => {
+                  const name = basename(object.key);
+                  return isImageName(name) && !isCoverName(name);
+                })
+                .map((object) => object.key),
+            )
+          : listImageKeys(listed.objects.map((object) => object.key));
+      if (!keys.length) {
+        throw new Error(`No images found under ${prefix}`);
+      }
+      return keys.map((key) => ({
+        url: presignGet(config, key, 60 * 60 * 6),
+      }));
+    }
+
+    const bytes = await getObjectBytes(config, decoded.value);
+    // Keep image bytes in a JSC session; only return tiny URLs across the bridge.
     const { urls } = openArchiveSession(bytes);
     return urls.map((url) => ({ url }));
   };
 
   /**
    * Resolve session page URLs to data: URIs so Nuke never hits a fake host.
-   * Bytes stay in JSC until each page is actually requested.
-   * Accepts both NetworkRequest (new API) and bare URL string (older runtimes).
+   * Presigned R2 URLs pass through unchanged.
    */
   willRequestImage = async (
     request: NetworkRequest | string,

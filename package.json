@@ -5,7 +5,7 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "build": "suwatte build",
+    "build": "suwatte build && tsx scripts/emit-runners-list.ts",
     "serve": "suwatte serve",
     "smoke": "tsx scripts/smoke.ts",
     "test:r2": "tsx scripts/test-cover-ref.ts",

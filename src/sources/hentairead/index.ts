@@ -19,8 +19,9 @@ import {
   type UIForm,
 } from "@suwatte/toolchain/types";
 import { ContentRating } from "@suwatte/toolchain/types";
-import { browserHeaders } from "../_shared/client";
+import { createProtectedClient } from "../_shared/client";
 import {
+  assertCloudflareCleared,
   cloudflareFromHeaders,
   looksLikeCloudflare,
   throwCloudflare,
@@ -88,13 +89,7 @@ const cloudflareFromThrown = (error: unknown): boolean => {
  */
 export default class Target {
   client = (() => {
-    const http = new HttpClient({
-      timeout: 45_000,
-      retries: { count: 2, delay: 400 },
-      rateLimit: { permits: 3, period: 1 },
-      cloudflareResolutionURL: CF_RESOLVE,
-      headers: browserHeaders({ Referer: `${BASE}/` }),
-    });
+    const http = createProtectedClient(CF_RESOLVE, { Referer: `${BASE}/` });
     http.interceptors.request.use((request) => {
       if (isImageRequest(request.url)) {
         request.headers.set("Accept", IMAGE_ACCEPT);
@@ -108,7 +103,7 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.hentairead",
     name: "HentaiRead",
-    version: 2.0,
+    version: 2.1,
     website: BASE,
     thumbnail: "hentairead.png",
     languages: ["en"],
@@ -127,7 +122,7 @@ export default class Target {
       {
         header: "Cloudflare",
         footer:
-          "Browse Latest (not Source Availability — that aborts on CF by design). Tap Open Challenge Page, complete the check, then reload. If it loops: Suwatte → Settings → Advanced → Network & Caches → Clear Network Cache. Safari cookies are not this source's jar.",
+          "Same path as NovelCrow: open the source so Resolve runs, complete the check, then the Latest tab loads. Availability still aborts on CF by design. If Latest stays on grey tiles after Resolve: Settings → Advanced → Clear Network Cache, Open Challenge Page, pull to refresh. Safari cookies are not this source's jar.",
         views: [
           UIWebViewButton({
             title: "Open Challenge Page",
@@ -169,24 +164,57 @@ export default class Target {
       return body;
     } catch (error) {
       if (cloudflareFromThrown(error)) throwCloudflare(CF_RESOLVE);
+      const response = (
+        error as {
+          response?: {
+            status?: number;
+            headers?: unknown;
+            text?: () => Promise<string>;
+          };
+        }
+      ).response;
+      if (response) {
+        const body = (await response.text?.().catch(() => "")) ?? "";
+        if (
+          looksLikeCloudflare(body) ||
+          cloudflareFromHeaders(response.status ?? 0, response.headers as never)
+        ) {
+          throwCloudflare(CF_RESOLVE);
+        }
+      }
       throw error;
     }
   };
 
-  getHomePage = async (): Promise<HomePage> => ({
-    feeds: [
-      {
-        id: "latest",
-        title: "Latest",
-        content: { list: { key: "latest", disableSorting: true } },
-      },
-      {
-        id: "popular",
-        title: "Popular",
-        content: { list: { key: "popular", disableSorting: true } },
-      },
-    ],
-  });
+  private failEmptyListing = (html: string): never => {
+    if (looksLikeCloudflare(html)) throwCloudflare(CF_RESOLVE);
+    const title =
+      html.match(/<title>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim() ??
+      "";
+    throw new Error(
+      `HentaiRead listing parsed 0 titles (${html.length} bytes${title ? `, ${title.slice(0, 80)}` : ""}). Clear Network Cache, Open Challenge Page, retry.`,
+    );
+  };
+
+  getHomePage = async (): Promise<HomePage> => {
+    // NovelCrow: probe before feeds so Resolve runs *before* Latest paints
+    // skeletons. Empty getHomePage + CF on getItemList left the grid loading.
+    await assertCloudflareCleared(this.client, CF_RESOLVE);
+    return {
+      feeds: [
+        {
+          id: "latest",
+          title: "Latest",
+          content: { list: { key: "latest", disableSorting: true } },
+        },
+        {
+          id: "popular",
+          title: "Popular",
+          content: { list: { key: "popular", disableSorting: true } },
+        },
+      ],
+    };
+  };
 
   getSortOptions = async (): Promise<SortOptions> => ({
     options: [...SORTS],
@@ -221,7 +249,8 @@ export default class Target {
     const sortby = request.key === "popular" ? "views" : "new";
     const html = await this.getHtml(listingUrl(page, sortby));
     const items = parseListing(html);
-    return { items, isLastPage: !hasNextPage(html) || items.length === 0 };
+    if (!items.length) this.failEmptyListing(html);
+    return { items, isLastPage: !hasNextPage(html) };
   };
 
   getSearchResults = async (

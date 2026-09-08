@@ -72,6 +72,12 @@ assert(
 assert(hasNextPage(listing), "listing should have next page");
 console.log("listing OK", items.length, items[0]?.title);
 
+const h3Only = parseListing(
+  `<div><img src="https://hencover.xyz/cover/x.jpg"><h3><a href="https://hentairead.com/hentai/h3-only-slug/">H3 Only</a></h3></div>`,
+);
+assert(h3Only[0]?.id === "h3-only-slug", h3Only[0]?.id);
+ItemSchema.parse(h3Only[0]);
+
 assert(
   parseMangaId("https://hentairead.com/hentai/foo-bar/") === "foo-bar",
   "parseMangaId",
@@ -202,7 +208,7 @@ const cfg = source.getConfiguration() as {
 assert(cfg.cloudflareResolutionURL === CF_RESOLVE, JSON.stringify(cfg));
 assert(cfg.useClientForImageRequests === true, "images must use HttpClient");
 assert(cfg.imageReferer === "https://hentairead.com/");
-assert(HentaiRead.info.version >= 2, `version ${HentaiRead.info.version}`);
+assert(HentaiRead.info.version >= 2.1, `version ${HentaiRead.info.version}`);
 
 const src = readFileSync("src/sources/hentairead/index.ts", "utf8");
 assert(/^["']use httpclient["']/m.test(src), "must use httpclient directive");
@@ -225,12 +231,17 @@ const main = async () => {
     ),
   });
 
-  const home = await source.getHomePage();
-  assert(home.feeds?.length === 2, "feeds");
-  assert(
-    !/assertCloudflareCleared|getHtml\(BASE\)/.test(src),
-    "homepage must not probe CF",
-  );
+  assert(/assertCloudflareCleared/.test(src), "homepage must probe CF like NovelCrow");
+  assert(!/rateLimit\s*:/.test(src), "rateLimit hung listing after Resolve");
+  try {
+    const home = await source.getHomePage();
+    assert(home.feeds?.length === 2, "feeds");
+  } catch (error) {
+    assert(error instanceof CloudflareError, `homepage expected CF, got ${error}`);
+    console.log("homepage CF probe OK");
+  }
+
+  assert(parseListing("<html><body>no cards</body></html>").length === 0, "empty html");
 
   assert(looksLikeCloudflare(cf), "cf fixture should detect");
   const liveCf = "/tmp/hr-live.html";

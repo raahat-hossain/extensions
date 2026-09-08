@@ -147,6 +147,33 @@ export const parseListing = (html: string) => {
     );
   }
 
+  if (items.length) return items;
+
+  // Markup drift: h3 > a[href*="/hentai/"] even without manga-item__link.
+  const h3Re =
+    /<h3\b[^>]*>\s*<a\b([^>]*href=["'][^"']*\/hentai\/[^"']+["'][^>]*)>([\s\S]*?)<\/a>/gi;
+  while ((match = h3Re.exec(html))) {
+    const tag = `<a ${match[1]}>`;
+    const href = attr(tag, "href") ?? "";
+    const title = stripTags(match[2] ?? "") || attr(tag, "title") || "";
+    if (!href || !title) continue;
+    const id = parseMangaId(href);
+    if (!id || seen.has(id) || /\/page\/\d+/i.test(href)) continue;
+    seen.add(id);
+    const before = html.slice(Math.max(0, match.index - 24_000), match.index);
+    const imgs = before.match(/<img\b[^>]*(?:manga-item__img-inner|src=)[^>]*>/gi);
+    const imgTag = imgs?.[imgs.length - 1];
+    const cover = imgTag ? listingCover(imgTag) : "";
+    items.push(
+      matureItem({
+        id,
+        title,
+        coverImage: cover ? absoluteUrl(BASE, cover) : undefined,
+        webUrl: absoluteUrl(BASE, href),
+      }),
+    );
+  }
+
   return items;
 };
 

@@ -1425,7 +1425,7 @@ var SourcePackage = (() => {
         });
       };
       var parseListing = (html) => {
-        var _a, _b;
+        var _a, _b, _c, _d;
         const items = [];
         const seen = /* @__PURE__ */ new Set();
         const cards = (0, html_1.collectBlocks)(html, CARD_OPEN, "div");
@@ -1453,6 +1453,30 @@ var SourcePackage = (() => {
           seen.add(id);
           const before = html.slice(Math.max(0, match.index - 24e3), match.index);
           const imgs = before.match(/<img\b[^>]*\bmanga-item__img-inner\b[^>]*>/gi);
+          const imgTag = imgs == null ? void 0 : imgs[imgs.length - 1];
+          const cover = imgTag ? listingCover(imgTag) : "";
+          items.push((0, item_1.matureItem)({
+            id,
+            title,
+            coverImage: cover ? (0, http_1.absoluteUrl)(constants_1.BASE, cover) : void 0,
+            webUrl: (0, http_1.absoluteUrl)(constants_1.BASE, href)
+          }));
+        }
+        if (items.length)
+          return items;
+        const h3Re = /<h3\b[^>]*>\s*<a\b([^>]*href=["'][^"']*\/hentai\/[^"']+["'][^>]*)>([\s\S]*?)<\/a>/gi;
+        while (match = h3Re.exec(html)) {
+          const tag = `<a ${match[1]}>`;
+          const href = (_c = (0, html_1.attr)(tag, "href")) != null ? _c : "";
+          const title = (0, html_1.stripTags)((_d = match[2]) != null ? _d : "") || (0, html_1.attr)(tag, "title") || "";
+          if (!href || !title)
+            continue;
+          const id = (0, exports.parseMangaId)(href);
+          if (!id || seen.has(id) || /\/page\/\d+/i.test(href))
+            continue;
+          seen.add(id);
+          const before = html.slice(Math.max(0, match.index - 24e3), match.index);
+          const imgs = before.match(/<img\b[^>]*(?:manga-item__img-inner|src=)[^>]*>/gi);
           const imgTag = imgs == null ? void 0 : imgs[imgs.length - 1];
           const cover = imgTag ? listingCover(imgTag) : "";
           items.push((0, item_1.matureItem)({
@@ -1748,13 +1772,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       var Target = class {
         constructor() {
           __publicField(this, "client", (() => {
-            const http = new HttpClient({
-              timeout: 45e3,
-              retries: { count: 2, delay: 400 },
-              rateLimit: { permits: 3, period: 1 },
-              cloudflareResolutionURL: constants_1.CF_RESOLVE,
-              headers: (0, client_1.browserHeaders)({ Referer: `${constants_1.BASE}/` })
-            });
+            const http = (0, client_1.createProtectedClient)(constants_1.CF_RESOLVE, { Referer: `${constants_1.BASE}/` });
             http.interceptors.request.use((request) => {
               if (isImageRequest(request.url)) {
                 request.headers.set("Accept", constants_1.IMAGE_ACCEPT);
@@ -1773,7 +1791,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
             sections: [
               {
                 header: "Cloudflare",
-                footer: "Browse Latest (not Source Availability \u2014 that aborts on CF by design). Tap Open Challenge Page, complete the check, then reload. If it loops: Suwatte \u2192 Settings \u2192 Advanced \u2192 Network & Caches \u2192 Clear Network Cache. Safari cookies are not this source's jar.",
+                footer: "Same path as NovelCrow: open the source so Resolve runs, complete the check, then the Latest tab loads. Availability still aborts on CF by design. If Latest stays on grey tiles after Resolve: Settings \u2192 Advanced \u2192 Clear Network Cache, Open Challenge Page, pull to refresh. Safari cookies are not this source's jar.",
                 views: [
                   (0, types_1.UIWebViewButton)({
                     title: "Open Challenge Page",
@@ -1795,6 +1813,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
             };
           });
           __publicField(this, "getHtml", async (url, referer = `${constants_1.BASE}/`, extraHeaders = {}) => {
+            var _a, _b, _c;
             try {
               const response = await this.client.get(url, {
                 headers: { Referer: referer, ...extraHeaders }
@@ -1812,23 +1831,40 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
             } catch (error) {
               if (cloudflareFromThrown(error))
                 (0, cloudflare_1.throwCloudflare)(constants_1.CF_RESOLVE);
+              const response = error.response;
+              if (response) {
+                const body = (_b = await ((_a = response.text) == null ? void 0 : _a.call(response).catch(() => ""))) != null ? _b : "";
+                if ((0, cloudflare_1.looksLikeCloudflare)(body) || (0, cloudflare_1.cloudflareFromHeaders)((_c = response.status) != null ? _c : 0, response.headers)) {
+                  (0, cloudflare_1.throwCloudflare)(constants_1.CF_RESOLVE);
+                }
+              }
               throw error;
             }
           });
-          __publicField(this, "getHomePage", async () => ({
-            feeds: [
-              {
-                id: "latest",
-                title: "Latest",
-                content: { list: { key: "latest", disableSorting: true } }
-              },
-              {
-                id: "popular",
-                title: "Popular",
-                content: { list: { key: "popular", disableSorting: true } }
-              }
-            ]
-          }));
+          __publicField(this, "failEmptyListing", (html) => {
+            var _a, _b, _c;
+            if ((0, cloudflare_1.looksLikeCloudflare)(html))
+              (0, cloudflare_1.throwCloudflare)(constants_1.CF_RESOLVE);
+            const title = (_c = (_b = (_a = html.match(/<title>([\s\S]*?)<\/title>/i)) == null ? void 0 : _a[1]) == null ? void 0 : _b.replace(/\s+/g, " ").trim()) != null ? _c : "";
+            throw new Error(`HentaiRead listing parsed 0 titles (${html.length} bytes${title ? `, ${title.slice(0, 80)}` : ""}). Clear Network Cache, Open Challenge Page, retry.`);
+          });
+          __publicField(this, "getHomePage", async () => {
+            await (0, cloudflare_1.assertCloudflareCleared)(this.client, constants_1.CF_RESOLVE);
+            return {
+              feeds: [
+                {
+                  id: "latest",
+                  title: "Latest",
+                  content: { list: { key: "latest", disableSorting: true } }
+                },
+                {
+                  id: "popular",
+                  title: "Popular",
+                  content: { list: { key: "popular", disableSorting: true } }
+                }
+              ]
+            };
+          });
           __publicField(this, "getSortOptions", async () => ({
             options: [...constants_1.SORTS],
             disableOrdering: false
@@ -1843,7 +1879,9 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
             const sortby = request.key === "popular" ? "views" : "new";
             const html = await this.getHtml((0, parse_1.listingUrl)(page, sortby));
             const items = (0, parse_1.parseListing)(html);
-            return { items, isLastPage: !(0, parse_1.hasNextPage)(html) || items.length === 0 };
+            if (!items.length)
+              this.failEmptyListing(html);
+            return { items, isLastPage: !(0, parse_1.hasNextPage)(html) };
           });
           __publicField(this, "getSearchResults", async (request, page) => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
@@ -1957,7 +1995,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       __publicField(Target, "info", {
         id: "en.hentairead",
         name: "HentaiRead",
-        version: 2,
+        version: 2.1,
         website: constants_1.BASE,
         thumbnail: "hentairead.png",
         languages: ["en"],
@@ -1975,7 +2013,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       var runtime = require_runtime();
       var sourceModule = require_hentairead();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.hentairead", "name": "HentaiRead", "version": 2, "website": "https://hentairead.com", "thumbnail": "hentairead.png", "languages": ["en"], "rating": 2 };
+      exports.SourceMetadata = { "id": "en.hentairead", "name": "HentaiRead", "version": 2.1, "website": "https://hentairead.com", "thumbnail": "hentairead.png", "languages": ["en"], "rating": 2 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

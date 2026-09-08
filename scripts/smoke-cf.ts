@@ -37,8 +37,8 @@ if (cfg.cloudflareResolutionURL !== NESTED) {
 if (!cfg.useClientForImageRequests) {
   throw new Error("useClientForImageRequests required per docs");
 }
-if (HentaiRead.info.version < 1.9) {
-  throw new Error(`expected >= 1.9, got ${HentaiRead.info.version}`);
+if (HentaiRead.info.version < 2) {
+  throw new Error(`expected >= 2.0, got ${HentaiRead.info.version}`);
 }
 
 const src = readFileSync("src/sources/hentairead/index.ts", "utf8");

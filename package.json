@@ -8,7 +8,8 @@
     "build": "suwatte build",
     "serve": "suwatte serve",
     "smoke": "tsx scripts/smoke.ts",
-    "test:r2": "tsx scripts/test-cover-ref.ts"
+    "test:r2": "tsx scripts/test-cover-ref.ts",
+    "test:hr": "tsx scripts/test-hentairead.ts"
   },
   "suwatte": {
     "listName": "Dev Extensions"

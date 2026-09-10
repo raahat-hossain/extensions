@@ -9,6 +9,7 @@ import androidx.preference.SwitchPreferenceCompat
 import eu.kanade.tachiyomi.extension.all.r2merge.meta.SeriesMetadata
 import eu.kanade.tachiyomi.extension.all.r2merge.net.ArchiveCache
 import eu.kanade.tachiyomi.extension.all.r2merge.net.ArchiveInterceptor
+import eu.kanade.tachiyomi.extension.all.r2merge.net.CoverImageInterceptor
 import eu.kanade.tachiyomi.extension.all.r2merge.net.R2Config
 import eu.kanade.tachiyomi.extension.all.r2merge.net.S3Client
 import eu.kanade.tachiyomi.extension.all.r2merge.net.S3Listing
@@ -47,6 +48,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import okhttp3.Headers
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -114,10 +116,22 @@ class R2Merge(
         network.client.newBuilder()
             .addInterceptor(::chaikaZipInterceptor)
             .addInterceptor(ArchiveInterceptor(archives))
+            .addInterceptor(CoverImageInterceptor)
+            .addInterceptor(::imageRefererInterceptor)
             .addInterceptor(::ehentaiBackupInterceptor)
             .addInterceptor(::ehentaiCookieInterceptor)
             .addNetworkInterceptor(::ehentaiCookieInterceptor)
             .addInterceptor(signer)
+            .apply {
+                // Source interceptors (fake hosts, Referer) must run before CF.
+                interceptors().apply {
+                    val cloudflare = firstOrNull { it.javaClass.simpleName == "CloudflareInterceptor" }
+                    if (cloudflare != null) {
+                        remove(cloudflare)
+                        add(cloudflare)
+                    }
+                }
+            }
             .build()
     }
 
@@ -324,8 +338,9 @@ class R2Merge(
             runCatching { resolveDetailsCover(config, seriesPrefix, listing, cover) }.getOrNull()
         }
         if (fromDetails != null) {
-            coverCache[cacheKey] = fromDetails
-            return fromDetails
+            val published = CoverImageInterceptor.wrapIfNeeded(fromDetails)
+            coverCache[cacheKey] = published
+            return published
         }
         val directImages = listing.objects.filter { isImageKey(it.key) && it.key.isChildOf(seriesPrefix) }
         val url = directImages.firstOrNull { it.key.isCoverFile() }?.let { config.imageUrl(it.key).toString() }
@@ -400,8 +415,10 @@ class R2Merge(
         val chapters = fetchText(config, obj)?.let { parseChaptersJson(it, json, seriesPrefix) }.orEmpty()
         val chapter = findChapterByName(chapters, ref.chapter) { it.title } ?: return null
         val pages = pagesForCover(chapter.url)
-        return pickCoverPage(pages, ref.page, preserveOrder = true) { it.imageUrl.orEmpty() }
+        val imageUrl = pickCoverPage(pages, ref.page, preserveOrder = true) { it.imageUrl.orEmpty() }
             ?.imageUrl
+            ?: return null
+        return CoverImageInterceptor.wrapIfNeeded(imageUrl)
     }
 
     private fun isChaptersJson(key: String): Boolean {
@@ -420,7 +437,12 @@ class R2Merge(
         }
         if (tryIdentifySite(url) != null) {
             val chapter = SChapter.create().apply { this.url = url }
-            return pageListParse(client.newCall(pageListRequest(chapter)).execute())
+            // Same path as fetchPageList so Cloudflare WebView/cookies apply.
+            return client.newCall(pageListRequest(chapter))
+                .asObservableSuccess()
+                .toBlocking()
+                .first()
+                .let { pageListParse(it) }
         }
         return localOrArchivePages(url)
     }
@@ -640,11 +662,32 @@ class R2Merge(
             .set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
         when {
             isChaikaLoopback(url) -> builder.set("Referer", "$CHAIKA_BASE/")
+            url.contains(CoverImageInterceptor.HOST, ignoreCase = true) -> {
+                url.toHttpUrlOrNull()?.queryParameter("u")?.let { real ->
+                    refererForImage(real)?.let { builder.set("Referer", it) }
+                }
+            }
             page.url.contains("e-hentai.org") || page.url.contains("exhentai.org") ->
                 builder.set("Referer", page.url)
             else -> refererForImage(url)?.let { builder.set("Referer", it) }
         }
         return GET(url, builder.build())
+    }
+
+    private fun imageRefererInterceptor(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        if (!request.method.equals("GET", ignoreCase = true) ||
+            !request.header("Referer").isNullOrEmpty()
+        ) {
+            return chain.proceed(request)
+        }
+        val referer = refererForImage(request.url.toString()) ?: return chain.proceed(request)
+        return chain.proceed(
+            request.newBuilder()
+                .header("Referer", referer)
+                .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+                .build(),
+        )
     }
 
     private fun parseEhentaiPages(firstHtml: String, requestUrl: String): List<Page> {

@@ -4,7 +4,7 @@ Mihon / TachiManga / Tachiyomi extension. Reads a Cloudflare R2 bucket.
 
 Package: `eu.kanade.tachiyomi.extension.all.r2merge` (in-place update of R2 Merge — credentials persist).
 
-Lib **1.4**, `1.4.5`. NSFW.
+Lib **1.4**, `1.4.6`. NSFW.
 
 ## Bucket layout
 
@@ -50,7 +50,7 @@ TachiManga wants **index.pb**:
 https://github.com/raahat-hossain/extensions/raw/cursor/r2-merge-extension-8f4a/repo/index.pb
 ```
 
-Sideload: [`repo/apk/tachiyomi-all.r2merge-v1.4.5.apk`](repo/apk/tachiyomi-all.r2merge-v1.4.5.apk)
+Sideload: [`repo/apk/tachiyomi-all.r2merge-v1.4.6.apk`](repo/apk/tachiyomi-all.r2merge-v1.4.6.apk)
 
 Settings: Account ID, Access Key, Secret, Bucket. Root Prefix empty if titles sit at bucket root. Optional public image URL (r2.dev / custom domain).
 

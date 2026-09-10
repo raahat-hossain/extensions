@@ -68,7 +68,7 @@ bash scripts/build-r2-merge-apk.sh
 
 ## R2 Library (`en.r2-library`) — Suwatte
 
-v1.9 — same layout as the Mihon extension. `details.cover` wins over `cover.webp`. Gallery hosts throw Suwatte's Cloudflare Resolve (owned HttpClient). Covers are never `data:` URLs (those crash the iOS image loader).
+v2.0 — library listing stays on R2 (no gallery fetches). Cloudflare Resolve fires when you open a HentaiRead/etc chapter, not while browsing.
 
 Suwatte `.stt` is separate from the TachiManga APK. After building, copy `dist/` to Pages at `/suwatte`.
 

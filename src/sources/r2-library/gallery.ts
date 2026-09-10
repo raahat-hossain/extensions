@@ -1,5 +1,5 @@
 import type { ChapterPage } from "@suwatte/toolchain/types";
-import { isCloudflareError } from "../_shared/cloudflare";
+import { isCloudflareError, throwCloudflare } from "../_shared/cloudflare";
 import { allMatches, attr, decodeEntities, firstMatch, stripTags } from "../_shared/html";
 import { absoluteUrl, fetchBytes, fetchJson, fetchText } from "../_shared/http";
 import { extractZipImagePages } from "../_shared/zip";
@@ -17,6 +17,7 @@ import { hitomiHeaders, LTN_URL, resolveImageUrl } from "../hitomi/gg";
 import { mapPool } from "../_shared/pool";
 import { decodePagesChapter } from "./chapters";
 import {
+  cloudflareResolveUrl,
   extractRemoteId,
   isRemoteArchiveUrl,
   tryIdentifySite,
@@ -202,21 +203,36 @@ const pagesForSite = async (site: SiteId, url: string): Promise<ChapterPage[]> =
 };
 
 export const pagesForChapterUrl = async (url: string): Promise<ChapterPage[]> => {
-  const listed = decodePagesChapter(url);
-  if (listed) return listed.map((image) => ({ url: image }));
+  try {
+    const listed = decodePagesChapter(url);
+    if (listed) return listed.map((image) => ({ url: image }));
 
-  if (isRemoteArchiveUrl(url)) {
-    const bytes = await fetchBytes(url, { timeout: 180_000 });
-    return extractZipImagePages(bytes).map((page) => ({ b64: page.b64 }));
-  }
+    if (isRemoteArchiveUrl(url)) {
+      const bytes = await fetchBytes(url, { timeout: 180_000 });
+      return extractZipImagePages(bytes).map((page) => ({ b64: page.b64 }));
+    }
 
-  const site = tryIdentifySite(url);
-  if (!site) {
-    throw new Error(
-      `Unknown chapter host. Use nhentai, hentairead, hentainexus, hentai2read, pandachaika, ehentai, hitomi, a .cbz/.zip, or a pages list.`,
-    );
+    const site = tryIdentifySite(url);
+    if (!site) {
+      throw new Error(
+        `Unknown chapter host. Use nhentai, hentairead, hentainexus, hentai2read, pandachaika, ehentai, hitomi, a .cbz/.zip, or a pages list.`,
+      );
+    }
+    return await pagesForSite(site, url);
+  } catch (error) {
+    if (isCloudflareError(error)) throw error;
+    const resolve = cloudflareResolveUrl(url);
+    const message = String((error as { message?: string })?.message ?? error);
+    if (
+      resolve &&
+      /cloudflare|cf-mitigated|just a moment|failed \(403\)|failed \(503\)|failed \(429\)/i.test(
+        message,
+      )
+    ) {
+      throwCloudflare(resolve);
+    }
+    throw error;
   }
-  return pagesForSite(site, url);
 };
 
 export const imageUrlsOf = (pages: ChapterPage[]): string[] =>

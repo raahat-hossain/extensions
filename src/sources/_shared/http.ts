@@ -109,7 +109,8 @@ export const fetchText = async (
       method: "GET",
       headers: mergeHeaders(options),
       timeout: options?.timeout,
-    });
+      cloudflareResolutionURL: options?.cloudflareResolutionURL,
+    } as Parameters<SourceHttpClient["request"]>[0]);
     // Throw on CF headers before waiting to fully materialize/parse body UI-side.
     if (cloudflareFromHeaders(response.status, response.headers)) {
       throwCloudflare(options?.cloudflareResolutionURL ?? originOf(url));

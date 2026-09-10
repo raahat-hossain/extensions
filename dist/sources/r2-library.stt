@@ -3477,7 +3477,7 @@ var SourcePackage = (() => {
       init_Buffer();
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
-      exports.refererForImage = exports.canonicalUrl = exports.extractRemoteId = exports.tryIdentifySite = exports.isArchiveSource = exports.siteFromHost = exports.normalizeSite = exports.hostOf = exports.isRemoteArchiveUrl = exports.isAbsoluteHttpUrl = void 0;
+      exports.refererForImage = exports.cloudflareResolveUrl = exports.canonicalUrl = exports.extractRemoteId = exports.tryIdentifySite = exports.isArchiveSource = exports.siteFromHost = exports.normalizeSite = exports.hostOf = exports.isRemoteArchiveUrl = exports.isAbsoluteHttpUrl = void 0;
       var ARCHIVE_SOURCES = /* @__PURE__ */ new Set([
         "zip",
         "cbz",
@@ -3646,6 +3646,21 @@ var SourcePackage = (() => {
         }
       };
       exports.canonicalUrl = canonicalUrl;
+      var cloudflareResolveUrl = (url) => {
+        switch ((0, exports.tryIdentifySite)(url)) {
+          case "hentairead":
+            return "https://hentairead.com/hentai/?sortby=new";
+          case "hentainexus":
+            return "https://hentainexus.com/";
+          case "hentai2read":
+            return "https://hentai2read.com/";
+          case "nhentai":
+            return "https://nhentai.net/";
+          default:
+            return void 0;
+        }
+      };
+      exports.cloudflareResolveUrl = cloudflareResolveUrl;
       var refererForImage = (url) => {
         const site = (0, exports.siteFromHost)((0, exports.hostOf)(url));
         switch (site) {
@@ -4140,7 +4155,8 @@ var SourcePackage = (() => {
             url,
             method: "GET",
             headers: mergeHeaders(options),
-            timeout: options == null ? void 0 : options.timeout
+            timeout: options == null ? void 0 : options.timeout,
+            cloudflareResolutionURL: options == null ? void 0 : options.cloudflareResolutionURL
           });
           if ((0, cloudflare_1.cloudflareFromHeaders)(response.status, response.headers)) {
             (0, cloudflare_1.throwCloudflare)((_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url));
@@ -5424,18 +5440,30 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
         }
       };
       var pagesForChapterUrl = async (url) => {
-        const listed = (0, chapters_1.decodePagesChapter)(url);
-        if (listed)
-          return listed.map((image) => ({ url: image }));
-        if ((0, sites_1.isRemoteArchiveUrl)(url)) {
-          const bytes = await (0, http_1.fetchBytes)(url, { timeout: 18e4 });
-          return (0, zip_1.extractZipImagePages)(bytes).map((page) => ({ b64: page.b64 }));
+        var _a;
+        try {
+          const listed = (0, chapters_1.decodePagesChapter)(url);
+          if (listed)
+            return listed.map((image) => ({ url: image }));
+          if ((0, sites_1.isRemoteArchiveUrl)(url)) {
+            const bytes = await (0, http_1.fetchBytes)(url, { timeout: 18e4 });
+            return (0, zip_1.extractZipImagePages)(bytes).map((page) => ({ b64: page.b64 }));
+          }
+          const site = (0, sites_1.tryIdentifySite)(url);
+          if (!site) {
+            throw new Error(`Unknown chapter host. Use nhentai, hentairead, hentainexus, hentai2read, pandachaika, ehentai, hitomi, a .cbz/.zip, or a pages list.`);
+          }
+          return await pagesForSite(site, url);
+        } catch (error) {
+          if ((0, cloudflare_1.isCloudflareError)(error))
+            throw error;
+          const resolve = (0, sites_1.cloudflareResolveUrl)(url);
+          const message = String((_a = error == null ? void 0 : error.message) != null ? _a : error);
+          if (resolve && /cloudflare|cf-mitigated|just a moment|failed \(403\)|failed \(503\)|failed \(429\)/i.test(message)) {
+            (0, cloudflare_1.throwCloudflare)(resolve);
+          }
+          throw error;
         }
-        const site = (0, sites_1.tryIdentifySite)(url);
-        if (!site) {
-          throw new Error(`Unknown chapter host. Use nhentai, hentairead, hentainexus, hentai2read, pandachaika, ehentai, hitomi, a .cbz/.zip, or a pages list.`);
-        }
-        return pagesForSite(site, url);
       };
       exports.pagesForChapterUrl = pagesForChapterUrl;
       var imageUrlsOf = (pages) => pages.map((page) => page.url).filter((url) => typeof url === "string" && !!url);
@@ -5828,7 +5856,6 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.resolveCoverImage = exports.classifyCoverSpec = exports.relativeCoverKey = exports.isUsableCoverUrl = void 0;
       var archive_1 = require_archive();
-      var cloudflare_1 = require_cloudflare();
       var gallery_1 = require_gallery();
       var pages_1 = require_pages();
       var r2_1 = require_r2();
@@ -5869,7 +5896,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       exports.classifyCoverSpec = classifyCoverSpec;
       var coverCacheKey = (config, contentId, coverSpec) => `${config.bucket}:${contentId}\0${coverSpec != null ? coverSpec : ""}`;
       var resolveCoverRef = async (options) => {
-        const { config, ref, folders, remotes } = options;
+        const { config, ref, folders, remotes, allowArchiveExtract } = options;
         const folder = folders.find((entry) => (0, archive_1.chapterNameMatches)(entry.name, ref.chapter));
         if (folder) {
           const listed = await (0, r2_1.listAll)(config, folder.prefix);
@@ -5878,15 +5905,13 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
           if (key)
             return (0, r2_1.imageUrl)(config, key, 60 * 60);
         }
-        const remote = remotes.find((entry) => (0, archive_1.chapterNameMatches)(entry.name, ref.chapter));
+        const remote = allowArchiveExtract && remotes.find((entry) => (0, archive_1.chapterNameMatches)(entry.name, ref.chapter));
         if (remote) {
           try {
             const pages = await (0, gallery_1.pagesForChapterUrl)(remote.url);
             const urls = (0, gallery_1.imageUrlsOf)(pages).filter(exports.isUsableCoverUrl);
             return pickImage(urls, ref.page);
-          } catch (error) {
-            if ((0, cloudflare_1.isCloudflareError)(error))
-              throw error;
+          } catch {
           }
         }
         return void 0;
@@ -6368,8 +6393,6 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       });
       var toItem = async (config, entry, details, title) => {
         var _a;
-        const chapters = await mergedChapters(config, entry, details);
-        const { folders, remotes } = coverTargets(chapters);
         return {
           id: entry.id,
           title: (_a = title != null ? title : details == null ? void 0 : details.title) != null ? _a : entry.id,
@@ -6380,8 +6403,8 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
             coverKey: entry.coverKey,
             details,
             archives: entry.archives,
-            folders,
-            remotes,
+            folders: entry.chapters.filter((chapter) => chapter.kind === "dir").map((chapter) => ({ prefix: chapter.prefix, name: chapter.name })),
+            remotes: [],
             allowArchiveExtract: false
           }),
           rating: types_1.ContentRating.MATURE
@@ -6396,7 +6419,6 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
           __publicField(this, "client", (() => {
             const http = new HttpClient({
               timeout: 45e3,
-              cloudflareResolutionURL: constants_1.CF_RESOLVE,
               headers: (0, client_1.browserHeaders)()
             });
             (0, http_1.bindSourceHttpClient)(http);
@@ -6404,8 +6426,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
           })());
           __publicField(this, "getConfiguration", () => ({
             endpoint: ["anilist", "mal"],
-            useClientForImageRequests: true,
-            cloudflareResolutionURL: constants_1.CF_RESOLVE
+            useClientForImageRequests: true
           }));
           __publicField(this, "getSettingsPage", async () => {
             var _a, _b, _c, _d, _e, _f;
@@ -6540,7 +6561,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
             const entry = await findEntry(config, contentId);
             const details = await loadDetails(config, entry);
             const chapters = await mergedChapters(config, entry, details);
-            const { folders, remotes } = coverTargets(chapters);
+            const { folders } = coverTargets(chapters);
             const coverImage = await (0, cover_1.resolveCoverImage)({
               config,
               contentId,
@@ -6549,8 +6570,8 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
               details,
               archives: entry.archives,
               folders,
-              remotes,
-              allowArchiveExtract: true
+              remotes: [],
+              allowArchiveExtract: false
             });
             if (details) {
               return (0, details_1.contentFromDetails)({ ...details, cover: void 0 }, { id: contentId, coverImage: coverImage != null ? coverImage : "" });
@@ -6658,7 +6679,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       __publicField(Target, "info", {
         id: "en.r2-library",
         name: "R2 Library",
-        version: 1.9,
+        version: 2,
         website: "https://developers.cloudflare.com/r2/",
         thumbnail: "r2-library.png",
         languages: ["en"],
@@ -6676,7 +6697,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       var runtime = require_runtime();
       var sourceModule = require_r2_library();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.9, "website": "https://developers.cloudflare.com/r2/", "thumbnail": "r2-library.png", "languages": ["en"], "rating": 2 };
+      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 2, "website": "https://developers.cloudflare.com/r2/", "thumbnail": "r2-library.png", "languages": ["en"], "rating": 2 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

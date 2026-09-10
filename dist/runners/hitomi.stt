@@ -992,7 +992,8 @@ var SourcePackage = (() => {
             url,
             method: "GET",
             headers: mergeHeaders(options),
-            timeout: options == null ? void 0 : options.timeout
+            timeout: options == null ? void 0 : options.timeout,
+            cloudflareResolutionURL: options == null ? void 0 : options.cloudflareResolutionURL
           });
           if ((0, cloudflare_1.cloudflareFromHeaders)(response.status, response.headers)) {
             (0, cloudflare_1.throwCloudflare)((_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url));

@@ -208,6 +208,21 @@ export const canonicalUrl = (site: SiteId, id: string): string => {
   }
 };
 
+export const cloudflareResolveUrl = (url: string): string | undefined => {
+  switch (tryIdentifySite(url)) {
+    case "hentairead":
+      return "https://hentairead.com/hentai/?sortby=new";
+    case "hentainexus":
+      return "https://hentainexus.com/";
+    case "hentai2read":
+      return "https://hentai2read.com/";
+    case "nhentai":
+      return "https://nhentai.net/";
+    default:
+      return undefined;
+  }
+};
+
 export const refererForImage = (url: string): string | undefined => {
   const site = siteFromHost(hostOf(url));
   switch (site) {

@@ -387,26 +387,24 @@ const toItem = async (
   entry: EntryAssets,
   details: DetailsFile | null,
   title?: string,
-): Promise<Item> => {
-  const chapters = await mergedChapters(config, entry, details);
-  const { folders, remotes } = coverTargets(chapters);
-  return {
-    id: entry.id,
-    title: title ?? details?.title ?? entry.id,
-    coverImage: await resolveCoverImage({
-      config,
-      contentId: entry.id,
-      seriesPrefix: entry.prefix,
-      coverKey: entry.coverKey,
-      details,
-      archives: entry.archives,
-      folders,
-      remotes,
-      allowArchiveExtract: false,
-    }),
-    rating: ContentRating.MATURE,
-  };
-};
+): Promise<Item> => ({
+  id: entry.id,
+  title: title ?? details?.title ?? entry.id,
+  coverImage: await resolveCoverImage({
+    config,
+    contentId: entry.id,
+    seriesPrefix: entry.prefix,
+    coverKey: entry.coverKey,
+    details,
+    archives: entry.archives,
+    folders: entry.chapters
+      .filter((chapter): chapter is ChapterRef & { kind: "dir" } => chapter.kind === "dir")
+      .map((chapter) => ({ prefix: chapter.prefix, name: chapter.name })),
+    remotes: [],
+    allowArchiveExtract: false,
+  }),
+  rating: ContentRating.MATURE,
+});
 
 export default class Target {
   /**
@@ -416,7 +414,6 @@ export default class Target {
   client = (() => {
     const http = new HttpClient({
       timeout: 45_000,
-      cloudflareResolutionURL: CF_RESOLVE,
       headers: browserHeaders(),
     });
     bindSourceHttpClient(http);
@@ -426,19 +423,17 @@ export default class Target {
   static info: SourceInfo = {
     id: "en.r2-library",
     name: "R2 Library",
-    version: 1.9,
+    version: 2.0,
     website: "https://developers.cloudflare.com/r2/",
     thumbnail: "r2-library.png",
     languages: ["en"],
     rating: ContentRating.MATURE,
   };
 
-  getConfiguration = (): SourceConfiguration =>
-    ({
-      endpoint: ["anilist", "mal"],
-      useClientForImageRequests: true,
-      cloudflareResolutionURL: CF_RESOLVE,
-    }) as SourceConfiguration;
+  getConfiguration = (): SourceConfiguration => ({
+    endpoint: ["anilist", "mal"],
+    useClientForImageRequests: true,
+  });
 
   getSettingsPage = async (): Promise<UIForm> => {
     const accountId = (await ObjectStore.string(SETTINGS.accountId)) ?? "";
@@ -594,7 +589,7 @@ export default class Target {
     const entry = await findEntry(config, contentId);
     const details = await loadDetails(config, entry);
     const chapters = await mergedChapters(config, entry, details);
-    const { folders, remotes } = coverTargets(chapters);
+    const { folders } = coverTargets(chapters);
 
     const coverImage = await resolveCoverImage({
       config,
@@ -604,8 +599,8 @@ export default class Target {
       details,
       archives: entry.archives,
       folders,
-      remotes,
-      allowArchiveExtract: true,
+      remotes: [],
+      allowArchiveExtract: false,
     });
 
     if (details) {

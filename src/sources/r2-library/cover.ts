@@ -6,7 +6,6 @@ import {
   parseChapterPageRef,
   type ChapterPageRef,
 } from "./archive";
-import { isCloudflareError } from "../_shared/cloudflare";
 import { imageUrlsOf, pagesForChapterUrl } from "./gallery";
 import type { DetailsFile } from "./details";
 import { listImageKeys } from "./pages";
@@ -102,7 +101,7 @@ const resolveCoverRef = async (options: {
   remotes: CoverRemote[];
   allowArchiveExtract: boolean;
 }): Promise<string | undefined> => {
-  const { config, ref, folders, remotes } = options;
+  const { config, ref, folders, remotes, allowArchiveExtract } = options;
 
   const folder = folders.find((entry) =>
     chapterNameMatches(entry.name, ref.chapter),
@@ -114,17 +113,18 @@ const resolveCoverRef = async (options: {
     if (key) return imageUrl(config, key, 60 * 60);
   }
 
-  // Zip pages are in-memory bytes. Suwatte cannot load data: URLs as covers.
-  const remote = remotes.find((entry) =>
-    chapterNameMatches(entry.name, ref.chapter),
-  );
+  // Zip/gallery covers are not resolved here. Fetching HentaiRead during
+  // getItemList throws CF and Suwatte does not show Resolve — the grid dies.
+  const remote =
+    allowArchiveExtract &&
+    remotes.find((entry) => chapterNameMatches(entry.name, ref.chapter));
   if (remote) {
     try {
       const pages = await pagesForChapterUrl(remote.url);
       const urls = imageUrlsOf(pages).filter(isUsableCoverUrl);
       return pickImage(urls, ref.page);
-    } catch (error) {
-      if (isCloudflareError(error)) throw error;
+    } catch {
+      // Never throw from cover resolution — CF belongs on getChapterPages.
     }
   }
 

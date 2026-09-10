@@ -17,6 +17,7 @@ import {
   relativeCoverKey,
 } from "../src/sources/r2-library/cover.ts";
 import { tryIdentifySite } from "../src/sources/r2-library/sites.ts";
+import { cloudflareResolveUrl } from "../src/sources/r2-library/sites.ts";
 
 installEmulatorGlobals();
 
@@ -64,6 +65,10 @@ assert.equal(tryIdentifySite("https://nhentai.net/g/289857/"), "nhentai");
 assert.equal(tryIdentifySite("https://hentairead.com/hentai/foo/"), "hentairead");
 assert.equal(tryIdentifySite("https://hitomi.la/galleries/123.html"), "hitomi");
 assert.equal(tryIdentifySite("https://cdn.example.com/ch.cbz"), null);
+assert.equal(
+  cloudflareResolveUrl("https://hentairead.com/hentai/foo/"),
+  "https://hentairead.com/hentai/?sortby=new",
+);
 
 const fromDetails = parseChaptersJson(
   JSON.stringify({

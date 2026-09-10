@@ -11,8 +11,62 @@ import {
   type Item,
   type Tag,
 } from "@suwatte/toolchain/types";
+import { decryptReaderPayload } from "./decrypt";
 
 export const BASE_URL = "https://hentainexus.com";
+export const DEFAULT_IMAGE_FIELD = "image_fallback";
+
+export const imageFieldFor = (format: string): string => {
+  switch (format) {
+    case "source":
+      return "image_source";
+    case "avif":
+      return "image_avif";
+    default:
+      return DEFAULT_IMAGE_FIELD;
+  }
+};
+
+/** Decrypt `initReader("...")` payload and return image URLs. */
+export const pagesFromReaderHtml = (
+  html: string,
+  imageField = DEFAULT_IMAGE_FIELD,
+): string[] => {
+  const encoded = firstMatch(html, /initReader\("([^"]+)"/);
+  if (!encoded) {
+    throw new Error(
+      "Could not find initReader script; the page structure may have changed",
+    );
+  }
+
+  const decrypted = decryptReaderPayload(encoded);
+  const parsed = JSON.parse(decrypted) as unknown;
+  if (!Array.isArray(parsed)) {
+    throw new Error("Unexpected reader payload shape");
+  }
+
+  const images = parsed.filter(
+    (entry): entry is Record<string, unknown> =>
+      !!entry &&
+      typeof entry === "object" &&
+      (entry as Record<string, unknown>).type === "image",
+  );
+
+  if (!images.length) {
+    throw new Error("No pages found for this chapter");
+  }
+
+  if (typeof images[0]![imageField] !== "string" || !images[0]![imageField]) {
+    throw new Error(
+      "Selected quality is not available. Login or select another quality.",
+    );
+  }
+
+  return images
+    .map((image) => image[imageField])
+    .filter((value): value is string => typeof value === "string" && !!value)
+    .map((url) => absoluteUrl(BASE_URL, url));
+};
 
 const TAG_COUNT_REGEX = /\s*\([\d,]+\)$/;
 

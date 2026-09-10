@@ -9,6 +9,7 @@
     "serve": "suwatte serve",
     "smoke": "tsx scripts/smoke.ts",
     "test:r2": "tsx scripts/test-cover-ref.ts",
+    "test:r2-merge": "tsx scripts/test-r2-merge.ts",
     "test:hr": "tsx scripts/test-hentairead.ts",
     "test:hiperdex": "tsx scripts/test-hiperdex.ts"
   },

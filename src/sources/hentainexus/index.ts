@@ -16,28 +16,16 @@ import {
   type SourceInfo,
 } from "@suwatte/toolchain/types";
 import { absoluteUrl, getText } from "../_shared/http";
-import { firstMatch } from "../_shared/html";
-import { decryptReaderPayload } from "./decrypt";
 import {
   BASE_URL,
   chapterForManga,
+  imageFieldFor,
+  pagesFromReaderHtml,
   parseMangaDetails,
   parseMangaList,
 } from "./parse";
 
 const PREFIX_ID_SEARCH = "id:";
-const DEFAULT_IMAGE_FIELD = "image_fallback";
-
-const imageFieldFor = (format: string): string => {
-  switch (format) {
-    case "source":
-      return "image_source";
-    case "avif":
-      return "image_avif";
-    default:
-      return DEFAULT_IMAGE_FIELD;
-  }
-};
 
 const fetchHtml = (pathOrUrl: string): Promise<string> => {
   const url = pathOrUrl.startsWith("http")
@@ -231,40 +219,8 @@ export default class Target {
   ): Promise<ChapterPage[]> => {
     const id = chapterId || contentId;
     const html = await fetchHtml(`/read/${id}`);
-    const encoded = firstMatch(html, /initReader\("([^"]+)"/);
-    if (!encoded) {
-      throw new Error(
-        "Could not find initReader script; the page structure may have changed",
-      );
-    }
-
-    const decrypted = decryptReaderPayload(encoded);
-    const parsed = JSON.parse(decrypted) as unknown;
-    if (!Array.isArray(parsed)) {
-      throw new Error("Unexpected reader payload shape");
-    }
-
-    const images = parsed.filter(
-      (entry): entry is Record<string, unknown> =>
-        !!entry &&
-        typeof entry === "object" &&
-        (entry as Record<string, unknown>).type === "image",
-    );
-
-    if (!images.length) {
-      throw new Error("No pages found for this chapter");
-    }
-
-    const field = imageFieldFor("webp");
-    if (typeof images[0]![field] !== "string" || !images[0]![field]) {
-      throw new Error(
-        "Selected quality is not available. Login or select another quality.",
-      );
-    }
-
-    return images
-      .map((image) => image[field])
-      .filter((value): value is string => typeof value === "string" && !!value)
-      .map((url) => ({ url: absoluteUrl(BASE_URL, url) }));
+    return pagesFromReaderHtml(html, imageFieldFor("webp")).map((url) => ({
+      url,
+    }));
   };
 }

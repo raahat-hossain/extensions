@@ -1253,6 +1253,33 @@ var SourcePackage = (() => {
     }
   });
 
+  // __temp__/sources/_shared/item.js
+  var require_item2 = __commonJS({
+    "__temp__/sources/_shared/item.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.PAGE_SIZE = exports.pageSize = exports.matureItem = exports.itemFrom = void 0;
+      var types_1 = require_types();
+      var itemFrom = (id, title, coverImage, rating = types_1.ContentRating.MATURE) => ({
+        id,
+        title,
+        coverImage,
+        rating
+      });
+      exports.itemFrom = itemFrom;
+      var matureItem = (options) => ({
+        ...(0, exports.itemFrom)(options.id, options.title, options.coverImage),
+        subtitle: options.subtitle,
+        webUrl: options.webUrl
+      });
+      exports.matureItem = matureItem;
+      exports.pageSize = 24;
+      exports.PAGE_SIZE = exports.pageSize;
+    }
+  });
+
   // __temp__/sources/hentainexus/decrypt.js
   var require_decrypt = __commonJS({
     "__temp__/sources/hentainexus/decrypt.js"(exports) {
@@ -1342,33 +1369,6 @@ var SourcePackage = (() => {
     }
   });
 
-  // __temp__/sources/_shared/item.js
-  var require_item2 = __commonJS({
-    "__temp__/sources/_shared/item.js"(exports) {
-      "use strict";
-      init_Buffer();
-      init_process();
-      Object.defineProperty(exports, "__esModule", { value: true });
-      exports.PAGE_SIZE = exports.pageSize = exports.matureItem = exports.itemFrom = void 0;
-      var types_1 = require_types();
-      var itemFrom = (id, title, coverImage, rating = types_1.ContentRating.MATURE) => ({
-        id,
-        title,
-        coverImage,
-        rating
-      });
-      exports.itemFrom = itemFrom;
-      var matureItem = (options) => ({
-        ...(0, exports.itemFrom)(options.id, options.title, options.coverImage),
-        subtitle: options.subtitle,
-        webUrl: options.webUrl
-      });
-      exports.matureItem = matureItem;
-      exports.pageSize = 24;
-      exports.PAGE_SIZE = exports.pageSize;
-    }
-  });
-
   // __temp__/sources/hentainexus/parse.js
   var require_parse = __commonJS({
     "__temp__/sources/hentainexus/parse.js"(exports) {
@@ -1376,12 +1376,45 @@ var SourcePackage = (() => {
       init_Buffer();
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
-      exports.chapterForManga = exports.parseMangaDetails = exports.parseMangaList = exports.BASE_URL = void 0;
+      exports.chapterForManga = exports.parseMangaDetails = exports.parseMangaList = exports.pagesFromReaderHtml = exports.imageFieldFor = exports.DEFAULT_IMAGE_FIELD = exports.BASE_URL = void 0;
       var http_1 = require_http2();
       var html_1 = require_html();
       var item_1 = require_item2();
       var types_1 = require_types();
+      var decrypt_1 = require_decrypt();
       exports.BASE_URL = "https://hentainexus.com";
+      exports.DEFAULT_IMAGE_FIELD = "image_fallback";
+      var imageFieldFor = (format) => {
+        switch (format) {
+          case "source":
+            return "image_source";
+          case "avif":
+            return "image_avif";
+          default:
+            return exports.DEFAULT_IMAGE_FIELD;
+        }
+      };
+      exports.imageFieldFor = imageFieldFor;
+      var pagesFromReaderHtml = (html, imageField = exports.DEFAULT_IMAGE_FIELD) => {
+        const encoded = (0, html_1.firstMatch)(html, /initReader\("([^"]+)"/);
+        if (!encoded) {
+          throw new Error("Could not find initReader script; the page structure may have changed");
+        }
+        const decrypted = (0, decrypt_1.decryptReaderPayload)(encoded);
+        const parsed = JSON.parse(decrypted);
+        if (!Array.isArray(parsed)) {
+          throw new Error("Unexpected reader payload shape");
+        }
+        const images = parsed.filter((entry) => !!entry && typeof entry === "object" && entry.type === "image");
+        if (!images.length) {
+          throw new Error("No pages found for this chapter");
+        }
+        if (typeof images[0][imageField] !== "string" || !images[0][imageField]) {
+          throw new Error("Selected quality is not available. Login or select another quality.");
+        }
+        return images.map((image) => image[imageField]).filter((value) => typeof value === "string" && !!value).map((url) => (0, http_1.absoluteUrl)(exports.BASE_URL, url));
+      };
+      exports.pagesFromReaderHtml = pagesFromReaderHtml;
       var TAG_COUNT_REGEX = /\s*\([\d,]+\)$/;
       var ownTextFromCell = (cellHtml) => {
         const withoutNested = cellHtml.replace(/<[^>]+>/g, " ");
@@ -1520,21 +1553,8 @@ var SourcePackage = (() => {
       Object.defineProperty(exports, "__esModule", { value: true });
       var types_1 = require_types();
       var http_1 = require_http2();
-      var html_1 = require_html();
-      var decrypt_1 = require_decrypt();
       var parse_1 = require_parse();
       var PREFIX_ID_SEARCH = "id:";
-      var DEFAULT_IMAGE_FIELD = "image_fallback";
-      var imageFieldFor = (format) => {
-        switch (format) {
-          case "source":
-            return "image_source";
-          case "avif":
-            return "image_avif";
-          default:
-            return DEFAULT_IMAGE_FIELD;
-        }
-      };
       var fetchHtml = (pathOrUrl) => {
         const url = pathOrUrl.startsWith("http") ? pathOrUrl : (0, http_1.absoluteUrl)(parse_1.BASE_URL, pathOrUrl);
         return (0, http_1.getText)(url, {
@@ -1684,24 +1704,9 @@ var SourcePackage = (() => {
           __publicField(this, "getChapterPages", async (contentId, chapterId) => {
             const id = chapterId || contentId;
             const html = await fetchHtml(`/read/${id}`);
-            const encoded = (0, html_1.firstMatch)(html, /initReader\("([^"]+)"/);
-            if (!encoded) {
-              throw new Error("Could not find initReader script; the page structure may have changed");
-            }
-            const decrypted = (0, decrypt_1.decryptReaderPayload)(encoded);
-            const parsed = JSON.parse(decrypted);
-            if (!Array.isArray(parsed)) {
-              throw new Error("Unexpected reader payload shape");
-            }
-            const images = parsed.filter((entry) => !!entry && typeof entry === "object" && entry.type === "image");
-            if (!images.length) {
-              throw new Error("No pages found for this chapter");
-            }
-            const field = imageFieldFor("webp");
-            if (typeof images[0][field] !== "string" || !images[0][field]) {
-              throw new Error("Selected quality is not available. Login or select another quality.");
-            }
-            return images.map((image) => image[field]).filter((value) => typeof value === "string" && !!value).map((url) => ({ url: (0, http_1.absoluteUrl)(parse_1.BASE_URL, url) }));
+            return (0, parse_1.pagesFromReaderHtml)(html, (0, parse_1.imageFieldFor)("webp")).map((url) => ({
+              url
+            }));
           });
         }
       };

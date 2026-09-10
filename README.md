@@ -2,11 +2,38 @@
 
 Dev catalog for [Suwatte](https://suwatte.mantton.com/developers/introduction/) source plugins.
 
+Parsers for nhentai / HentaiRead / HentaiNexus follow **Yūzōnō** cursed-manga-extensions first, then **Keiyoushi** extensions-source.
+
 ## Sources
 
-### Static Demo (`en.static-demo`)
+### R2 Merge (`en.r2-merge`)
 
-Two fixture titles (1 chapter / 2 pages each) with rich metadata. Good for verifying the toolchain path.
+One library entry that **merges** multiple nhentai / HentaiRead / HentaiNexus (and Hentai2Read) galleries into chapters.
+
+R2 stores metadata + cover. Chapter images are fetched live from the site URLs in `chapters.json`.
+
+```text
+<title-id>/
+  details.json          # optional (same fields as R2 Library)
+  cover.webp            # custom cover
+  chapters.json         # required — remote gallery/reader URLs
+```
+
+Example `chapters.json`:
+
+```json
+{
+  "chapters": [
+    { "title": "Ch 1", "number": 1, "url": "https://nhentai.net/g/289857/" },
+    { "title": "Ch 2", "number": 2, "url": "https://hentairead.com/hentai/some-slug/" },
+    { "title": "Ch 3", "number": 3, "id": "21161", "source": "hentainexus" }
+  ]
+}
+```
+
+`source` is optional when the host is obvious. Layout notes: [`examples/r2-merge-layout/README.md`](examples/r2-merge-layout/README.md)
+
+Same R2 credentials UI as R2 Library (enter them again on this source — Suwatte stores settings per source). Only folders that contain `chapters.json` show up, so zip titles and merge titles can share a bucket.
 
 ### R2 Library (`en.r2-library`)
 
@@ -52,6 +79,7 @@ Configure credentials in Suwatte → source settings (Account ID, Access Key, Se
 npm install
 npm run build
 npm run test:r2
+npm run test:r2-merge
 npm run smoke
 ```
 

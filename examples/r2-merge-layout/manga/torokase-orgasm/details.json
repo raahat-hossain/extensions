@@ -1,0 +1,11 @@
+{
+  "title": "Torokase Orgasm",
+  "summary": "Example merged series: one library entry, chapters pulled from nhentai + HentaiRead gallery URLs.",
+  "rating": "mature",
+  "status": "ongoing",
+  "contentType": "manga",
+  "credits": [{ "name": "Oltlo", "role": "Artist" }],
+  "genres": [
+    { "id": "compilation", "title": "Compilation" }
+  ]
+}

@@ -1,5 +1,13 @@
 # Extensions
 
+Archive branch with the **Suwatte** sources (frozen before this repo was stripped to R2 Library-only).
+
+Suwatte list:
+
+```
+https://raw.githubusercontent.com/raahat-hossain/extensions/cursor/suwatte-extensions-8f4a/dist/runners.json
+```
+
 Dev catalog for **Suwatte** sources, plus a **Mihon / TachiManga** APK: **R2 Library**.
 
 Parsers follow **Yūzōnō** cursed-manga-extensions first, then **Keiyoushi**. The R2 zip/folder reader is the MNG Collection layout.
@@ -41,7 +49,7 @@ Layout notes: [`examples/r2-merge-layout/README.md`](examples/r2-merge-layout/RE
 ### Install
 
 ```
-https://github.com/raahat-hossain/extensions/raw/cursor/r2-merge-extension-8f4a/repo/index.pb
+https://github.com/raahat-hossain/extensions/raw/cursor/suwatte-extensions-8f4a/repo/index.pb
 ```
 
 Sideload: `repo/apk/tachiyomi-all.r2merge-v1.4.3.apk`

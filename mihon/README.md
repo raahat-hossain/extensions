@@ -31,7 +31,7 @@ One R2 bucket. Chapters are **folder images**, **.cbz/.zip** (HTTP range), and/o
 ## Install
 
 ```
-https://github.com/raahat-hossain/extensions/raw/cursor/r2-merge-extension-8f4a/repo/index.pb
+https://github.com/raahat-hossain/extensions/raw/cursor/suwatte-extensions-8f4a/repo/index.pb
 ```
 
 Or sideload `repo/apk/tachiyomi-all.r2merge-v1.4.3.apk`. Settings: account id / access key / secret / bucket.

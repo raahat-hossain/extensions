@@ -18,13 +18,11 @@ Each folder under the root prefix is a title. Mix any of: image folders, `.cbz`/
   Chapter 002.cbz       # zip/cbz, ranged (not downloaded whole)
 ```
 
-Generator (details + chapters): [`web/index.html`](web/index.html)
+JSON generator (HTTPS, renders in the browser):
 
-On iPhone, open:
+**[https://raahat-hossain.github.io/extensions/](https://raahat-hossain.github.io/extensions/)**
 
-```
-https://cdn.jsdelivr.net/gh/raahat-hossain/extensions@cursor/r2-merge-extension-8f4a/web/index.html
-```
+Source: [`web/index.html`](web/index.html). First deploy needs Pages on: **Settings → Pages → Source: GitHub Actions**.
 
 ```json
 {

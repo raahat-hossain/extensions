@@ -67,3 +67,27 @@ Array, or `{ "chapters": [ ... ] }`. Each entry is a URL string or an object. Me
 - `.cbr` / `.rar` / `.pdf` are not readable — convert to `.cbz`
 
 `details.json` uses Tachiyomi local-source fields (`title`, `author`, `artist`, `description`, `genre`, `status`, `cover`). `ComicInfo.xml` in the series folder works as a fallback. Default rating is **mature** when omitted.
+
+### Cover
+
+Resolve order:
+
+1. `details.json` → `"cover"`
+2. `cover.(png|jpg|jpeg|webp|gif|avif)` in the title folder
+3. First page of the first chapter
+
+`cover` values:
+
+```json
+"cover": "https://cdn.example.com/front.jpg"
+```
+
+```json
+"cover": "Chapter 1_1"
+```
+
+That is `chapterName_pageIndex` (1-based). `"Chapter 1_1"` opens the chapter folder/archive named `Chapter 1` (also matches `Chapter 001` / `001 - Chapter 1.cbz`) and uses the first image.
+
+Legacy filename form still works: `"chapter 4_24.png"` → page `24.png` inside that chapter.
+
+Relative image keys work too: `"front.webp"` or `"art/cover.jpg"`.

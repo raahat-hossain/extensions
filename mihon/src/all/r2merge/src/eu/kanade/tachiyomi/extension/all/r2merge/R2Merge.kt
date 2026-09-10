@@ -15,13 +15,17 @@ import eu.kanade.tachiyomi.extension.all.r2merge.net.S3Listing
 import eu.kanade.tachiyomi.extension.all.r2merge.net.S3Object
 import eu.kanade.tachiyomi.extension.all.r2merge.net.SigV4Interceptor
 import eu.kanade.tachiyomi.extension.all.r2merge.net.isAbsoluteUrl
+import eu.kanade.tachiyomi.extension.all.r2merge.util.CoverPageRef
 import eu.kanade.tachiyomi.extension.all.r2merge.util.NaturalOrder
 import eu.kanade.tachiyomi.extension.all.r2merge.util.chapterNumberOf
 import eu.kanade.tachiyomi.extension.all.r2merge.util.fileName
+import eu.kanade.tachiyomi.extension.all.r2merge.util.findChapterByName
 import eu.kanade.tachiyomi.extension.all.r2merge.util.isArchiveKey
 import eu.kanade.tachiyomi.extension.all.r2merge.util.isHiddenKey
 import eu.kanade.tachiyomi.extension.all.r2merge.util.isImageKey
 import eu.kanade.tachiyomi.extension.all.r2merge.util.isUnsupportedArchiveKey
+import eu.kanade.tachiyomi.extension.all.r2merge.util.parseCoverPageRef
+import eu.kanade.tachiyomi.extension.all.r2merge.util.pickCoverPage
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.ConfigurableSource
@@ -314,17 +318,64 @@ class R2Merge(
         metadata: SeriesMetadata? = null,
     ): String? {
         coverCache[seriesPrefix]?.let { return it }
-        metadata?.cover?.takeIf { isAbsoluteHttpUrl(it) }?.let {
-            coverCache[seriesPrefix] = it
-            return it
+        val fromDetails = metadata?.cover?.trim()?.takeIf { it.isNotEmpty() }?.let { cover ->
+            runCatching { resolveDetailsCover(config, seriesPrefix, listing, cover) }.getOrNull()
         }
         val directImages = listing.objects.filter { isImageKey(it.key) && it.key.isChildOf(seriesPrefix) }
-        val url = directImages.firstOrNull { it.key.isCoverFile() }?.let { config.imageUrl(it.key).toString() }
+        val url = fromDetails
+            ?: directImages.firstOrNull { it.key.isCoverFile() }?.let { config.imageUrl(it.key).toString() }
             ?: directImages.minWithOrNull(compareBy(NaturalOrder) { it.key })
                 ?.let { config.imageUrl(it.key).toString() }
             ?: firstPageUrl(config, listing)
         if (url != null) coverCache[seriesPrefix] = url
         return url
+    }
+
+    /**
+     * `details.json` cover: absolute URL, `Chapter 1_1` (name + 1-based index),
+     * `chapter 4_24.png` (name + page file), or a relative image key.
+     */
+    private fun resolveDetailsCover(
+        config: R2Config,
+        seriesPrefix: String,
+        listing: S3Listing,
+        cover: String,
+    ): String? {
+        if (cover.startsWith("data:", ignoreCase = true) || isAbsoluteHttpUrl(cover)) return cover
+        parseCoverPageRef(cover)?.let { ref ->
+            resolveCoverPageRef(config, seriesPrefix, listing, ref)?.let { return it }
+        }
+        val key = if (cover.startsWith(seriesPrefix)) {
+            cover
+        } else {
+            "${seriesPrefix.trimEnd('/')}/${cover.trimStart('/')}"
+        }
+        return if (isImageKey(key)) config.imageUrl(key).toString() else null
+    }
+
+    private fun resolveCoverPageRef(
+        config: R2Config,
+        seriesPrefix: String,
+        listing: S3Listing,
+        ref: CoverPageRef,
+    ): String? {
+        val folder = findChapterByName(listing.prefixes, ref.chapter) { it }
+        if (folder != null) {
+            val images = s3.listAll(config, folder, delimiter = null)
+                .objects
+                .filter { isImageKey(it.key) }
+            pickCoverPage(images, ref.page) { it.key }?.let { page ->
+                return config.imageUrl(page.key).toString()
+            }
+        }
+        val archiveObjects = listing.objects.filter {
+            isArchiveKey(it.key) && it.key.isChildOf(seriesPrefix)
+        }
+        val archive = findChapterByName(archiveObjects, ref.chapter) { it.key } ?: return null
+        val entries = archives.zipFor(archive.key).entries()
+            .filter { isImageKey(it.name) && !isHiddenKey(it.name) }
+        val entry = pickCoverPage(entries, ref.page) { it.name } ?: return null
+        return ArchiveInterceptor.pageUrl(archive.key, entry.name)
     }
 
     private fun firstPageUrl(config: R2Config, listing: S3Listing): String? {

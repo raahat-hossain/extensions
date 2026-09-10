@@ -4,3 +4,4 @@ __temp__/
 .DS_Store
 keiyoushi/
 .ref/
+__pycache__/

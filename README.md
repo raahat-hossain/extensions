@@ -33,11 +33,15 @@ Layout notes: [`examples/r2-merge-layout/README.md`](examples/r2-merge-layout/RE
 
 ### Install
 
-1. **TachiManga:** Browser → Extensions → `+` → APK  
-   `repo/apk/tachiyomi-all.r2merge-v1.4.1.apk`
-2. **Mihon / TachiManga repo:** add  
-   `https://raw.githubusercontent.com/raahat-hossain/extensions/<branch>/repo/index.min.json`
-3. Source settings: Cloudflare account id, R2 access key, secret, bucket. Leave **Root Prefix** empty if title folders sit at bucket root.
+TachiManga wants the same **`index.pb`** URL shape as Yūzōnō (not `index.min.json`). Delete the broken `repo/index.pb` row first, then add:
+
+```
+https://github.com/raahat-hossain/extensions/raw/cursor/r2-merge-extension-8f4a/repo/index.pb
+```
+
+APK sideload still works: Browser → Extensions → `+` → `repo/apk/tachiyomi-all.r2merge-v1.4.1.apk`
+
+Source settings: Cloudflare account id, R2 access key, secret, bucket. Leave **Root Prefix** empty if title folders sit at bucket root.
 
 ### Build APK
 

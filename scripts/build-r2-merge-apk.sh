@@ -55,39 +55,9 @@ printf 'sdk.dir=%s\n' "$ANDROID_SDK" > "$YUZONO/local.properties"
   ./gradlew :src:all:r2merge:assembleRelease --no-daemon --stacktrace
 )
 
-mkdir -p "$ROOT/repo/apk"
+mkdir -p "$ROOT/repo/apk" "$ROOT/repo/jar" "$ROOT/repo/icon"
 find "$YUZONO/src/all/r2merge/build/outputs/apk" -name 'tachiyomi-all.r2merge-*.apk' -exec cp {} "$ROOT/repo/apk/" \;
-
-python3 - "$ROOT" <<'PY'
-import glob, json, os, sys
-root = sys.argv[1]
-apks = glob.glob(os.path.join(root, "repo/apk/tachiyomi-all.r2merge-*.apk"))
-if not apks:
-    raise SystemExit("no apk produced")
-apk_path = max(apks, key=os.path.getmtime)
-apk = os.path.basename(apk_path)
-version = apk.removeprefix("tachiyomi-all.r2merge-v").removesuffix(".apk")
-code = int(version.split(".")[-1])
-index = [{
-    "name": "Tachiyomi: R2 Merge",
-    "pkg": "eu.kanade.tachiyomi.extension.all.r2merge",
-    "apk": apk,
-    "lang": "all",
-    "code": code,
-    "version": version,
-    "nsfw": 1,
-    "sources": [{
-        "name": "R2 Merge",
-        "lang": "all",
-        "id": "8210462026091001",
-        "baseUrl": "https://developers.cloudflare.com",
-    }],
-}]
-os.makedirs(os.path.join(root, "repo"), exist_ok=True)
-with open(os.path.join(root, "repo/index.min.json"), "w") as fh:
-    json.dump(index, fh, separators=(",", ":"))
-with open(os.path.join(root, "repo/index.json"), "w") as fh:
-    json.dump(index, fh, indent=2)
-    fh.write("\n")
-print("wrote", apk, "version", version)
-PY
+find "$YUZONO/src/all/r2merge/build/outputs/jar" -name 'tachiyomi-all.r2merge-*.jar' -exec cp {} "$ROOT/repo/jar/" \;
+cp -f "$ROOT/mihon/src/all/r2merge/res/mipmap-xhdpi/ic_launcher.png" \
+  "$ROOT/repo/icon/eu.kanade.tachiyomi.extension.all.r2merge.png"
+python3 "$ROOT/scripts/emit-repo-index.py"

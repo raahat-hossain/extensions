@@ -31,9 +31,13 @@ Parsers: Yūzōnō nHentai API v2, then Keiyoushi HentaiRead / HentaiNexus.
 
 ## Install
 
-1. **TachiManga:** Browser → Extensions → `+` → `repo/apk/tachiyomi-all.r2merge-v1.4.1.apk`
-2. **Repo URL:** `…/repo/index.min.json` on this branch
-3. Source settings: Cloudflare account id, R2 access key, secret, bucket, optional endpoint/prefix
+Repo URL (same shape as Yūzōnō — must end in `index.pb`):
+
+```
+https://github.com/raahat-hossain/extensions/raw/cursor/r2-merge-extension-8f4a/repo/index.pb
+```
+
+Or sideload `repo/apk/tachiyomi-all.r2merge-v1.4.1.apk`. Then source settings: account id / access key / secret / bucket.
 
 ## Build
 

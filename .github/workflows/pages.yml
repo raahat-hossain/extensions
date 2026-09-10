@@ -1,3 +1,4 @@
+# Serves web/ at https://raahat-hossain.github.io/extensions/
 name: Deploy JSON generator
 
 on:

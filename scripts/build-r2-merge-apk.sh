@@ -56,9 +56,14 @@ printf 'sdk.dir=%s\n' "$ANDROID_SDK" > "$YUZONO/local.properties"
 )
 
 mkdir -p "$ROOT/repo/apk" "$ROOT/repo/jar" "$ROOT/repo/icon"
+rm -f "$ROOT/repo/apk/"tachiyomi-all.r2merge-*.apk
+rm -f "$ROOT/repo/jar/"tachiyomi-all.r2merge-*.jar
 find "$YUZONO/src/all/r2merge/build/outputs/apk" -name 'tachiyomi-all.r2merge-*.apk' -exec cp {} "$ROOT/repo/apk/" \;
 find "$YUZONO/src/all/r2merge/build/outputs/jar" -name 'tachiyomi-all.r2merge-*.jar' -exec cp {} "$ROOT/repo/jar/" \;
 cp -f "$ROOT/mihon/src/all/r2merge/res/mipmap-xhdpi/ic_launcher.png" \
   "$ROOT/repo/icon/eu.kanade.tachiyomi.extension.all.r2merge.png"
+# Spotless formats the Yūzōnō copy; bring that back so the repo stays in sync.
+cp -a "$YUZONO/src/all/r2merge/src/." "$ROOT/mihon/src/all/r2merge/src/"
+cp -f "$YUZONO/src/all/r2merge/build.gradle.kts" "$ROOT/mihon/src/all/r2merge/build.gradle.kts"
 python3 -c 'import google.protobuf' 2>/dev/null || python3 -m pip install --user protobuf
 python3 "$ROOT/scripts/emit-repo-index.py"

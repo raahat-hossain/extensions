@@ -15,13 +15,23 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import keiyoushi.annotation.Source
 import keiyoushi.utils.getPreferencesLazy
+import keiyoushi.zip.dataRange
+import keiyoushi.zip.range
+import keiyoushi.zip.readEntry
+import keiyoushi.zip.zipDirectory
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import okhttp3.Headers
+import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.asResponseBody
+import okio.buffer
 import rx.Observable
+import java.lang.String.CASE_INSENSITIVE_ORDER
 
 @Source
 class R2Merge(
@@ -39,8 +49,16 @@ class R2Merge(
         isLenient = true
     }
     private val preferences by getPreferencesLazy()
+    private val hitomiGg = HitomiGg()
 
     private var cachedNhServer: String? = null
+
+    override val client = network.client.newBuilder()
+        .addInterceptor(::chaikaZipInterceptor)
+        .addInterceptor(::ehentaiBackupInterceptor)
+        .addInterceptor(::ehentaiCookieInterceptor)
+        .addNetworkInterceptor(::ehentaiCookieInterceptor)
+        .build()
 
     private fun config(): R2Config {
         val accountId = preferences.getString(PREF_ACCOUNT, "")!!.trim()
@@ -254,7 +272,11 @@ class R2Merge(
         val site = identifySite(url)
         val remoteId = extractRemoteId(site, url)
         val target = pageListUrl(site, remoteId, url)
-        return GET(target, headers.newBuilder().set("Referer", siteReferer(site)).build())
+        val builder = headers.newBuilder().set("Referer", siteReferer(site))
+        if (site == SiteId.Hitomi) {
+            builder.set("Origin", HITOMI_BASE)
+        }
+        return GET(target, builder.build())
     }
 
     override fun fetchPageList(chapter: SChapter): Observable<List<Page>> {
@@ -290,18 +312,151 @@ class R2Merge(
             host.contains("hentairead.com") -> parseHentaiReadPages(body, requestUrl, json)
             host.contains("hentainexus.com") -> parseHentaiNexusPages(body, json)
             host.contains("hentai2read.com") -> parseHentai2ReadPages(body)
+            host.contains("panda.chaika.moe") || host.contains("chaika.moe") ->
+                parseChaikaPages(body)
+            isEHentaiHost(host) -> parseEhentaiPages(body, requestUrl)
+            host.contains(HITOMI_CDN) || host.contains("hitomi.la") -> parseHitomiPages(body)
             else -> throw Exception("Don't know how to parse pages from $host")
         }
     }
 
-    override fun imageUrlParse(response: Response) = throw UnsupportedOperationException()
+    override fun imageUrlParse(response: Response): String {
+        val requestUrl = response.request.url.toString()
+        if (!isEHentaiHost(hostOf(requestUrl))) throw UnsupportedOperationException()
+        val html = response.use { it.body.string() }
+        return parseEhentaiImageUrl(html, requestUrl, includeBackup = true)
+    }
 
     override fun imageRequest(page: Page): Request {
         val url = page.imageUrl ?: throw Exception("Missing page URL")
         val builder = headers.newBuilder()
             .set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
-        refererForImage(url)?.let { builder.set("Referer", it) }
+        when {
+            isChaikaLoopback(url) -> builder.set("Referer", "$CHAIKA_BASE/")
+            page.url.contains("e-hentai.org") || page.url.contains("exhentai.org") ->
+                builder.set("Referer", page.url)
+            else -> refererForImage(url)?.let { builder.set("Referer", it) }
+        }
         return GET(url, builder.build())
+    }
+
+    private fun parseEhentaiPages(firstHtml: String, requestUrl: String): List<Page> {
+        val urls = linkedSetOf<String>()
+        var html = firstHtml
+        var currentUrl = requestUrl
+        var listingPages = 0
+        while (true) {
+            urls += parseEhentaiThumbLinks(html, currentUrl)
+            val next = parseEhentaiNextPage(html, currentUrl) ?: break
+            if (++listingPages > 200) break
+            currentUrl = next
+            html = client.newCall(GET(next, ehHeaders(next))).execute().use { response ->
+                if (!response.isSuccessful) throw Exception("E-Hentai listing failed (${response.code})")
+                response.body.string()
+            }
+        }
+        if (urls.isEmpty()) throw Exception("E-Hentai: no pages")
+        return urls.mapIndexed { index, viewerUrl -> Page(index, viewerUrl) }
+    }
+
+    private fun parseHitomiPages(body: String): List<Page> {
+        val hashes = parseHitomiHashes(body, json)
+        val ggHeaders = headers.newBuilder()
+            .set("Referer", "$HITOMI_BASE/")
+            .set("Origin", HITOMI_BASE)
+            .build()
+        return hashes.mapIndexed { index, hash ->
+            Page(index, imageUrl = hitomiGg.imageUrl(client, ggHeaders, hash))
+        }
+    }
+
+    private fun parseChaikaPages(apiBody: String): List<Page> {
+        val zipUrl = parseChaikaDownloadPath(apiBody, json)
+        val zipHeaders = headers.newBuilder().set("Referer", "$CHAIKA_BASE/").build()
+        val dir = client.zipDirectory(zipUrl, zipHeaders)
+        val entries = dir.entries
+            .filter { isChaikaImageEntry(it.name) }
+            .ifEmpty {
+                dir.entries.filter { entry ->
+                    !entry.name.endsWith("/") && !entry.name.startsWith("__MACOSX/")
+                }
+            }
+            .sortedWith(compareBy(CASE_INSENSITIVE_ORDER) { it.name })
+        if (entries.isEmpty()) throw Exception("PandaChaika: archive has no pages")
+        return entries.mapIndexed { index, entry ->
+            val payload = json.encodeToString(
+                ChaikaZipImage.serializer(),
+                ChaikaZipImage(
+                    url = zipUrl,
+                    name = entry.name,
+                    offset = entry.localHeaderOffset,
+                    compressedSize = entry.compressedSize,
+                    method = entry.method,
+                ),
+            )
+            Page(index, imageUrl = "https://127.0.0.1/#$payload")
+        }
+    }
+
+    private fun ehHeaders(pageUrl: String): Headers {
+        val origin = if (hostOf(pageUrl).contains("exhentai")) EXHENTAI_BASE else EHENTAI_BASE
+        return headers.newBuilder().set("Referer", "$origin/").build()
+    }
+
+    private fun ehentaiCookieInterceptor(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        if (!isEHentaiHost(request.url.host)) return chain.proceed(request)
+        val cookie = request.header("Cookie").orEmpty()
+        if (cookie.contains("nw=")) return chain.proceed(request)
+        val merged = listOf(cookie.takeIf { it.isNotBlank() }, "nw=1", "uconfig=prn_n")
+            .filterNotNull()
+            .joinToString("; ")
+        return chain.proceed(request.newBuilder().header("Cookie", merged).build())
+    }
+
+    private fun ehentaiBackupInterceptor(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        val bakUrl = request.url.fragment?.takeIf { it.startsWith("http") }
+            ?: return chain.proceed(request)
+        val result = runCatching { chain.proceed(request) }
+        if (!result.isFailure && result.getOrNull()?.isSuccessful == true) {
+            return result.getOrThrow()
+        }
+        result.getOrNull()?.close()
+        val bakResponse = chain.proceed(GET(bakUrl, ehHeaders(bakUrl)))
+        val newImageUrl = bakResponse.use { response ->
+            if (!response.isSuccessful) throw Exception("E-Hentai backup failed (${response.code})")
+            parseEhentaiImageUrl(response.body.string(), bakUrl, includeBackup = false)
+        }
+        return chain.proceed(request.newBuilder().url(newImageUrl).build())
+    }
+
+    private fun chaikaZipInterceptor(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        if (request.url.host != "127.0.0.1") return chain.proceed(request)
+        val fragment = request.url.fragment ?: return chain.proceed(request)
+        val data = runCatching {
+            json.decodeFromString(ChaikaZipImage.serializer(), fragment)
+        }.getOrNull() ?: return chain.proceed(request)
+
+        val rangeRequest = request.newBuilder()
+            .url(data.url)
+            .range(dataRange(data.offset, data.compressedSize))
+            .header("Referer", "$CHAIKA_BASE/")
+            .build()
+        val response = chain.proceed(rangeRequest)
+        if (!response.isSuccessful) return response
+        val image = readEntry(response.body.source(), data.compressedSize, data.method).buffer()
+        var type = data.name.substringAfterLast('.').lowercase()
+        if (type == "jpg") type = "jpeg"
+        return response.newBuilder()
+            .removeHeader("Content-Range")
+            .removeHeader("Content-Length")
+            .code(200)
+            .message("OK")
+            .protocol(Protocol.HTTP_1_1)
+            .body(image.asResponseBody("image/$type".toMediaType()))
+            .build()
     }
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {

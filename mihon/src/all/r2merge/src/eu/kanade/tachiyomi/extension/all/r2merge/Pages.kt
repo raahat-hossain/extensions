@@ -6,6 +6,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.jsoup.Jsoup
 
 private val DEFAULT_NH_SERVERS = listOf(
@@ -104,4 +105,55 @@ internal fun pickNhServer(body: String, json: Json): String {
     }.getOrDefault(emptyList())
     val list = servers.ifEmpty { DEFAULT_NH_SERVERS }
     return list.random()
+}
+
+internal fun parseHitomiHashes(body: String, json: Json): List<String> {
+    val payload = body.substringAfter("var galleryinfo = ", missingDelimiterValue = "")
+        .trim()
+        .trimEnd(';')
+        .ifBlank { throw Exception("Hitomi: missing galleryinfo") }
+    val files = json.parseToJsonElement(payload).jsonObject["files"]?.jsonArray
+        ?: throw Exception("Hitomi: no files")
+    if (files.isEmpty()) throw Exception("Hitomi: no pages")
+    return files.mapIndexed { index, page ->
+        page.jsonObject["hash"]?.jsonPrimitive?.content
+            ?: throw Exception("Hitomi: page $index has no hash")
+    }
+}
+
+internal fun parseChaikaDownloadPath(body: String, json: Json): String {
+    val download = json.parseToJsonElement(body).jsonObject["download"]?.jsonPrimitive?.content
+        ?: throw Exception("PandaChaika: no download path")
+    return chaikaDownloadUrl(download)
+}
+
+internal fun parseEhentaiThumbLinks(html: String, pageUrl: String): List<String> {
+    val doc = Jsoup.parse(html, pageUrl)
+    return doc.select("#gdt a").map { it.absUrl("href") }.filter { href ->
+        href.contains("/s/")
+    }.distinct()
+}
+
+internal fun parseEhentaiNextPage(html: String, pageUrl: String): String? {
+    val doc = Jsoup.parse(html, pageUrl)
+    val next = doc.select("a[onclick=return false], a[onclick=\"return false\"]")
+        .firstOrNull { it.text().trim() == ">" }
+        ?.absUrl("href")
+    return next?.takeIf { it.isNotBlank() && it != pageUrl }
+}
+
+internal fun parseEhentaiImageUrl(html: String, requestUrl: String, includeBackup: Boolean): String {
+    val doc = Jsoup.parse(html, requestUrl)
+    val imgUrl = doc.select("#img").attr("abs:src")
+    if (imgUrl.isBlank()) throw Exception("E-Hentai: no image on $requestUrl")
+    if (!includeBackup) return imgUrl
+    val nlValue = Regex("""nl\('(.+?)'\)""")
+        .find(doc.selectFirst("#loadfail")?.attr("onclick").orEmpty())
+        ?.groupValues?.get(1)
+    if (nlValue.isNullOrEmpty()) return imgUrl
+    val bakUrl = requestUrl.substringBefore('#').toHttpUrl().newBuilder()
+        .setQueryParameter("nl", nlValue)
+        .build()
+        .toString()
+    return "$imgUrl#$bakUrl"
 }

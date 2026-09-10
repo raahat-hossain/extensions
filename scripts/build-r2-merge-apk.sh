@@ -60,4 +60,5 @@ find "$YUZONO/src/all/r2merge/build/outputs/apk" -name 'tachiyomi-all.r2merge-*.
 find "$YUZONO/src/all/r2merge/build/outputs/jar" -name 'tachiyomi-all.r2merge-*.jar' -exec cp {} "$ROOT/repo/jar/" \;
 cp -f "$ROOT/mihon/src/all/r2merge/res/mipmap-xhdpi/ic_launcher.png" \
   "$ROOT/repo/icon/eu.kanade.tachiyomi.extension.all.r2merge.png"
+python3 -c 'import google.protobuf' 2>/dev/null || python3 -m pip install --user protobuf
 python3 "$ROOT/scripts/emit-repo-index.py"

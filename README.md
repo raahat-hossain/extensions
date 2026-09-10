@@ -30,7 +30,7 @@ Suwatte source list (directory URL, not `runners.json`):
 https://raahat-hossain.github.io/extensions/suwatte
 ```
 
-R2 Library on Suwatte is **1.8** (same `details.json` chapters[] / gallery mix as the Mihon APK; `details.cover` wins over `cover.webp`). Update the list in-app after adding.
+R2 Library on Suwatte is **2.0**. Update the list in-app after adding. Library browse stays on R2; Cloudflare Resolve runs when you open a gallery chapter (HentaiRead, etc.).
 
 ```json
 {

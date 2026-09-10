@@ -2,10 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <title>R2 Library JSON</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0b0d" />
+  <meta name="application-name" content="R2 JSON" />
+  <meta name="apple-mobile-web-app-title" content="R2 JSON" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%237c5cff'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='36' fill='white' font-family='sans-serif'%3ER%3C/text%3E%3C/svg%3E" />
   <style>
     :root {
@@ -256,7 +263,7 @@
 
   <dialog id="pasteDialog">
     <h3>Paste links</h3>
-    <p class="hint" style="margin-top:0">One URL per line. Names default to Chapter N.</p>
+    <p class="hint" style="margin-top:0">TachiManga / Mihon shares, markdown, or raw URLs — extra text is stripped.</p>
     <textarea id="pasteArea" placeholder="https://example.com/g/123/"></textarea>
     <menu>
       <button class="ghost" type="button" id="pasteCancel">Cancel</button>
@@ -268,6 +275,109 @@
   <script>
     const $ = (id) => document.getElementById(id);
     const STORAGE = "r2-library-json-builder";
+    const SHARE_NOISE = /^(share|shared|sent)\s+from\b/i;
+
+    const stripUrl = (raw) => String(raw || "")
+      .replace(/^<+|>+$/g, "")
+      .replace(/[),.;!?]+$/g, "")
+      .replace(/[)>]+$/g, "")
+      .trim();
+
+    const cleanPasteTitle = (s) => String(s || "")
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/[<>]/g, " ")
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter((line) => line && !SHARE_NOISE.test(line) && !/^https?:\/\//i.test(line))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .replace(/^[-–—:|]+|[-–—:|]+$/g, "")
+      .trim();
+
+    const looksLikeChapterTitle = (s) =>
+      /^(ch(?:apter)?\.?\s*)?\d+(\.\d+)?$/i.test(s) || /^chapter\s+.+/i.test(s);
+
+    const isShareBlob = (s) => {
+      const text = String(s || "");
+      if (!text.trim()) return false;
+      if (SHARE_NOISE.test(text) || /share from/i.test(text)) return true;
+      if (/[\n\r]/.test(text)) return true;
+      return /\s/.test(text.trim()) && /https?:\/\//i.test(text);
+    };
+
+    const extractChapterPastes = (text) => {
+      const src = String(text || "").replace(/\r\n/g, "\n");
+      const hits = [];
+      const seen = new Set();
+      const pushHit = (url, title, start, end) => {
+        const clean = stripUrl(url);
+        if (!clean || seen.has(`${clean}@${start}`)) return;
+        seen.add(`${clean}@${start}`);
+        hits.push({ url: clean, title: cleanPasteTitle(title), start, end });
+      };
+
+      const md = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/gi;
+      let match;
+      const consumed = [];
+      while ((match = md.exec(src))) {
+        pushHit(match[2], match[1], match.index, match.index + match[0].length);
+        consumed.push([match.index, match.index + match[0].length]);
+      }
+
+      const urlRe = /https?:\/\/[^\s<>"'`\]]+/gi;
+      while ((match = urlRe.exec(src))) {
+        const start = match.index;
+        const end = start + match[0].length;
+        if (consumed.some(([a, b]) => start >= a && end <= b)) continue;
+        pushHit(match[0], "", start, end);
+      }
+
+      hits.sort((a, b) => a.start - b.start);
+      if (hits.length) {
+        return hits.map((hit, i) => {
+          const prevEnd = i === 0 ? 0 : hits[i - 1].end;
+          const title = hit.title || cleanPasteTitle(src.slice(prevEnd, hit.start));
+          return { url: hit.url, title };
+        });
+      }
+
+      return src.split(/\n/).map((line) => line.trim()).filter(Boolean).flatMap((line) => {
+        if (SHARE_NOISE.test(line)) return [];
+        if (/\.(cbz|zip)$/i.test(line) || /\/$/.test(line)) return [{ url: line, title: "" }];
+        return [];
+      });
+    };
+
+    const maybeFillSeriesTitle = (items) => {
+      if (fields.title.value.trim()) return;
+      const series = items.find((item) => item.title && !looksLikeChapterTitle(item.title))?.title;
+      if (series) fields.title.value = series;
+    };
+
+    const chapterFromPaste = (item) => ({
+      url: item.url,
+      title: looksLikeChapterTitle(item.title) ? item.title : "",
+    });
+
+    const applyPasteToChapter = (idx, text) => {
+      const items = extractChapterPastes(text);
+      if (!items.length) {
+        chapters[idx].url = String(text || "").trim();
+        renderChapters();
+        return;
+      }
+      maybeFillSeriesTitle(items);
+      const next = chapterFromPaste(items[0]);
+      chapters[idx] = {
+        url: next.url,
+        title: chapters[idx].title.trim() || next.title,
+      };
+      items.slice(1).forEach((item, offset) => {
+        chapters.splice(idx + 1 + offset, 0, chapterFromPaste(item));
+      });
+      renderChapters();
+      document.querySelector(`.ch-url[data-i="${idx}"]`)?.focus();
+    };
 
     const fields = {
       title: $("title"),
@@ -427,11 +537,34 @@
     $("chapters").addEventListener("input", (e) => {
       const i = Number(e.target.dataset.i);
       if (Number.isNaN(i)) return;
-      if (e.target.classList.contains("ch-url")) chapters[i].url = e.target.value;
+      if (e.target.classList.contains("ch-url")) {
+        if (isShareBlob(e.target.value)) {
+          applyPasteToChapter(i, e.target.value);
+          return;
+        }
+        chapters[i].url = e.target.value;
+      }
       if (e.target.classList.contains("ch-title")) chapters[i].title = e.target.value;
       updatePreview();
       saveLocal();
     });
+
+    $("chapters").addEventListener("paste", (e) => {
+      if (!e.target.classList.contains("ch-url")) return;
+      const i = Number(e.target.dataset.i);
+      if (Number.isNaN(i)) return;
+      const text = e.clipboardData?.getData("text") || "";
+      if (!isShareBlob(text) && extractChapterPastes(text).length <= 1) return;
+      e.preventDefault();
+      applyPasteToChapter(i, text);
+    });
+
+    $("chapters").addEventListener("blur", (e) => {
+      if (!e.target.classList.contains("ch-url")) return;
+      const i = Number(e.target.dataset.i);
+      if (Number.isNaN(i) || !isShareBlob(e.target.value)) return;
+      applyPasteToChapter(i, e.target.value);
+    }, true);
 
     $("chapters").addEventListener("click", (e) => {
       const del = e.target.dataset.del;
@@ -469,13 +602,11 @@
     $("pasteBtn").addEventListener("click", () => $("pasteDialog").showModal());
     $("pasteCancel").addEventListener("click", () => $("pasteDialog").close());
     $("pasteApply").addEventListener("click", () => {
-      const urls = $("pasteArea").value
-        .split(/\s+/)
-        .map((s) => s.trim())
-        .filter((s) => /^https?:\/\//i.test(s) || /\.(cbz|zip)$/i.test(s) || /\/$/.test(s));
-      if (!urls.length) { toast("No links found"); return; }
+      const items = extractChapterPastes($("pasteArea").value);
+      if (!items.length) { toast("No links found"); return; }
+      maybeFillSeriesTitle(items);
+      const next = items.map(chapterFromPaste);
       const empty = chapters.length === 1 && !chapters[0].url && !chapters[0].title;
-      const next = urls.map((url) => ({ url, title: "" }));
       chapters = empty ? next : chapters.concat(next);
       $("pasteArea").value = "";
       $("pasteDialog").close();

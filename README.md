@@ -18,11 +18,11 @@ Each folder under the root prefix is a title. Mix any of: image folders, `.cbz`/
   Chapter 002.cbz       # zip/cbz, ranged (not downloaded whole)
 ```
 
-JSON generator (HTTPS, renders in the browser):
+JSON generator:
 
 **[https://raahat-hossain.github.io/extensions/](https://raahat-hossain.github.io/extensions/)**
 
-Source: [`web/index.html`](web/index.html). First deploy needs Pages on: **Settings → Pages → Source: GitHub Actions**.
+Source: [`web/index.html`](web/index.html). If that 404s, enable Pages once: [Settings → Pages](https://github.com/raahat-hossain/extensions/settings/pages) → Source: **GitHub Actions**, then re-run **Deploy JSON generator**.
 
 ```json
 {

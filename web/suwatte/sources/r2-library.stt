@@ -3298,7 +3298,7 @@ var SourcePackage = (() => {
       init_Buffer();
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
-      exports.extractArchivePages = exports.parseChapterNumber = exports.naturalCompare = exports.folderIdFromPrefix = exports.basename = exports.extractArchivePageDataUrl = exports.findArchiveByChapterName = exports.archiveStem = exports.parseChapterPageRef = exports.isDetailsName = exports.isCoverName = exports.isImageName = exports.isArchiveName = void 0;
+      exports.extractArchivePages = exports.parseChapterNumber = exports.naturalCompare = exports.folderIdFromPrefix = exports.basename = exports.extractArchivePageDataUrl = exports.findArchiveByChapterName = exports.archiveStem = exports.chapterNameMatches = exports.parseChapterPageRef = exports.isChaptersFileName = exports.isDetailsName = exports.isCoverName = exports.isImageName = exports.isArchiveName = void 0;
       var fflate_1 = require_browser();
       var crypto_1 = require_crypto();
       var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set([
@@ -3331,9 +3331,11 @@ var SourcePackage = (() => {
       exports.isCoverName = isCoverName;
       var isDetailsName = (name) => /^(details|info|metadata|series)\.json$/i.test(name);
       exports.isDetailsName = isDetailsName;
+      var isChaptersFileName = (name) => /^(chapters|chapter-list|chapter_list)\.json$/i.test(name);
+      exports.isChaptersFileName = isChaptersFileName;
       var parseChapterPageRef = (value) => {
         const trimmed = value.trim();
-        if (!trimmed || /^https?:\/\//i.test(trimmed) || (0, exports.isCoverName)(trimmed)) {
+        if (!trimmed || /^https?:\/\//i.test(trimmed) || trimmed.startsWith("data:") || (0, exports.isCoverName)(trimmed) || trimmed.includes("/") || trimmed.includes("\\")) {
           return null;
         }
         const separator = trimmed.lastIndexOf("_");
@@ -3345,13 +3347,29 @@ var SourcePackage = (() => {
           return null;
         const lower = page.toLowerCase();
         const dot = lower.lastIndexOf(".");
-        if (dot < 0)
-          return null;
+        if (dot < 0) {
+          return /^\d+$/.test(page) ? { chapter, page } : null;
+        }
         if (!IMAGE_EXTENSIONS.has(lower.slice(dot)))
           return null;
         return { chapter, page };
       };
       exports.parseChapterPageRef = parseChapterPageRef;
+      var chapterNameMatches = (name, needle) => {
+        const a = name.replace(/\.(cbz|zip)$/i, "").trim().toLowerCase();
+        const b = needle.replace(/\.(cbz|zip)$/i, "").trim().toLowerCase();
+        if (!a || !b)
+          return false;
+        if (a === b)
+          return true;
+        const strip = (value) => value.replace(/^\d+(?:\.\d+)?\s*[-._:)\]\s]+/, "").trim();
+        if (strip(a) === b || a.endsWith(b) || b.endsWith(a))
+          return true;
+        const left = (0, exports.parseChapterNumber)(name, -1);
+        const right = (0, exports.parseChapterNumber)(needle, -1);
+        return left >= 0 && right >= 0 && left === right;
+      };
+      exports.chapterNameMatches = chapterNameMatches;
       var archiveStem = (name) => name.replace(/\.(cbz|zip)$/i, "").trim();
       exports.archiveStem = archiveStem;
       var findArchiveByChapterName = (archives, chapterName) => {
@@ -3361,11 +3379,7 @@ var SourcePackage = (() => {
         const exact = archives.find((archive) => (0, exports.archiveStem)(archive.name).toLowerCase() === needle);
         if (exact)
           return exact;
-        return archives.find((archive) => {
-          const stem = (0, exports.archiveStem)(archive.name).toLowerCase();
-          const stripped = stem.replace(/^\d+(\.\d+)?\s*[-._:)\]\s]+/, "").trim();
-          return stripped === needle || stem.endsWith(needle);
-        });
+        return archives.find((archive) => (0, exports.chapterNameMatches)(archive.name, chapterName));
       };
       exports.findArchiveByChapterName = findArchiveByChapterName;
       var mimeForPage = (pageName) => {
@@ -3384,19 +3398,20 @@ var SourcePackage = (() => {
       };
       var extractArchivePageDataUrl = (archiveBytes, pageName) => {
         const files = (0, fflate_1.unzipSync)(archiveBytes);
+        const images = Object.entries(files).filter(([name2, data2]) => {
+          if (!(data2 == null ? void 0 : data2.length) || name2.endsWith("/"))
+            return false;
+          if (name2.startsWith("__MACOSX/"))
+            return false;
+          return (0, exports.isImageName)((0, exports.basename)(name2));
+        }).sort(([left], [right]) => (0, exports.naturalCompare)(left, right));
         const target = pageName.toLowerCase();
-        const entry = Object.entries(files).find(([name, data2]) => {
-          if (!(data2 == null ? void 0 : data2.length) || name.endsWith("/"))
-            return false;
-          if (name.startsWith("__MACOSX/"))
-            return false;
-          return (0, exports.basename)(name).toLowerCase() === target;
-        });
-        if (!entry) {
+        const indexed = /^\d+$/.test(pageName) ? images[Number(pageName) - 1] : images.find(([name2]) => (0, exports.basename)(name2).toLowerCase() === target);
+        if (!indexed) {
           throw new Error(`Page "${pageName}" not found inside archive`);
         }
-        const [, data] = entry;
-        return `data:${mimeForPage(pageName)};base64,${(0, crypto_1.bytesToBase64)(data)}`;
+        const [name, data] = indexed;
+        return `data:${mimeForPage(name)};base64,${(0, crypto_1.bytesToBase64)(data)}`;
       };
       exports.extractArchivePageDataUrl = extractArchivePageDataUrl;
       var basename = (key) => {
@@ -3455,6 +3470,336 @@ var SourcePackage = (() => {
     }
   });
 
+  // __temp__/sources/r2-library/sites.js
+  var require_sites = __commonJS({
+    "__temp__/sources/r2-library/sites.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.refererForImage = exports.canonicalUrl = exports.extractRemoteId = exports.tryIdentifySite = exports.isArchiveSource = exports.siteFromHost = exports.normalizeSite = exports.hostOf = exports.isRemoteArchiveUrl = exports.isAbsoluteHttpUrl = void 0;
+      var ARCHIVE_SOURCES = /* @__PURE__ */ new Set([
+        "zip",
+        "cbz",
+        "archive",
+        "r2",
+        "folder",
+        "dir",
+        "file",
+        "r2-library"
+      ]);
+      var isAbsoluteHttpUrl = (url) => url.startsWith("http://") || url.startsWith("https://");
+      exports.isAbsoluteHttpUrl = isAbsoluteHttpUrl;
+      var isRemoteArchiveUrl = (url) => {
+        var _a, _b, _c;
+        const path = (_c = (_b = (_a = url.trim().split("?")[0]) == null ? void 0 : _a.split("#")[0]) == null ? void 0 : _b.toLowerCase()) != null ? _c : "";
+        return path.endsWith(".zip") || path.endsWith(".cbz");
+      };
+      exports.isRemoteArchiveUrl = isRemoteArchiveUrl;
+      var hostOf = (url) => {
+        var _a;
+        const match = /^https?:\/\/([^/?#]+)/i.exec(url.trim());
+        return ((_a = match == null ? void 0 : match[1]) != null ? _a : "").toLowerCase().replace(/^www\./, "");
+      };
+      exports.hostOf = hostOf;
+      var normalizeSite = (value) => {
+        if (!(value == null ? void 0 : value.trim()))
+          return null;
+        const key = value.trim().toLowerCase().replace(/\s+/g, "-");
+        switch (key) {
+          case "nhentai":
+          case "nh":
+          case "n-hentai":
+          case "nhentai.net":
+            return "nhentai";
+          case "hentairead":
+          case "hr":
+          case "hentai-read":
+          case "hentairead.com":
+            return "hentairead";
+          case "hentainexus":
+          case "hn":
+          case "nexus":
+          case "hentai-nexus":
+          case "hentainexus.com":
+            return "hentainexus";
+          case "hentai2read":
+          case "h2r":
+          case "hentai-2-read":
+          case "hentai2read.com":
+            return "hentai2read";
+          case "pandachaika":
+          case "panda-chaika":
+          case "chaika":
+          case "panda":
+          case "panda.chaika.moe":
+          case "chaika.moe":
+            return "pandachaika";
+          case "ehentai":
+          case "e-hentai":
+          case "eh":
+          case "exhentai":
+          case "ex":
+          case "e-hentai.org":
+          case "exhentai.org":
+            return "ehentai";
+          case "hitomi":
+          case "hitomi.la":
+            return "hitomi";
+          default:
+            return null;
+        }
+      };
+      exports.normalizeSite = normalizeSite;
+      var siteFromHost = (host) => {
+        const h = host.toLowerCase().replace(/^www\./, "");
+        if (h === "nhentai.net" || h.endsWith(".nhentai.net"))
+          return "nhentai";
+        if (h === "hentairead.com" || h.endsWith(".hentairead.com") || h === "hencover.xyz" || h === "henread.xyz") {
+          return "hentairead";
+        }
+        if (h === "hentainexus.com" || h.endsWith(".hentainexus.com")) {
+          return "hentainexus";
+        }
+        if (h === "hentai2read.com" || h.endsWith(".hentai2read.com") || h.endsWith(".hentaicdn.com")) {
+          return "hentai2read";
+        }
+        if (h === "panda.chaika.moe" || h === "chaika.moe" || h.endsWith(".chaika.moe")) {
+          return "pandachaika";
+        }
+        if (h === "e-hentai.org" || h === "exhentai.org" || h.endsWith(".e-hentai.org") || h.endsWith(".exhentai.org")) {
+          return "ehentai";
+        }
+        if (h === "hitomi.la" || h.endsWith(".hitomi.la") || h === "gold-usergeneratedcontent.net" || h.endsWith(".gold-usergeneratedcontent.net")) {
+          return "hitomi";
+        }
+        return null;
+      };
+      exports.siteFromHost = siteFromHost;
+      var isArchiveSource = (value) => {
+        var _a;
+        const v = (_a = value == null ? void 0 : value.trim().toLowerCase().replace(/\s+/g, "-")) != null ? _a : "";
+        return ARCHIVE_SOURCES.has(v);
+      };
+      exports.isArchiveSource = isArchiveSource;
+      var tryIdentifySite = (url, explicit) => {
+        if ((0, exports.isArchiveSource)(explicit))
+          return null;
+        const named = (0, exports.normalizeSite)(explicit);
+        if (named)
+          return named;
+        if (!url || (0, exports.isRemoteArchiveUrl)(url))
+          return null;
+        return (0, exports.siteFromHost)((0, exports.hostOf)(url));
+      };
+      exports.tryIdentifySite = tryIdentifySite;
+      var extractRemoteId = (site, url) => {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s;
+        const trimmed = url.trim();
+        switch (site) {
+          case "nhentai":
+            return (_d = (_c = (_a = /\/g\/(\d+)/i.exec(trimmed)) == null ? void 0 : _a[1]) != null ? _c : (_b = /\b(\d{4,})\b/.exec(trimmed)) == null ? void 0 : _b[1]) != null ? _d : "";
+          case "hentairead": {
+            const slug = (_e = /\/hentai\/([^/?#]+)/i.exec(trimmed)) == null ? void 0 : _e[1];
+            if (slug)
+              return decodeURIComponent(slug);
+            const last = trimmed.replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").pop();
+            return last ? decodeURIComponent(last) : "";
+          }
+          case "hentainexus":
+            return (_i = (_h = (_f = /\/(?:view|read)\/(\d+)/i.exec(trimmed)) == null ? void 0 : _f[1]) != null ? _h : (_g = /\b(\d+)\b/.exec(trimmed)) == null ? void 0 : _g[1]) != null ? _i : "";
+          case "hentai2read":
+            return trimmed.replace(/[?#].*$/, "").replace(/\/+$/, "").replace(/^https?:\/\/[^/]+/i, "").replace(/^\/+/, "");
+          case "pandachaika":
+            return (_m = (_l = (_j = /\/archive\/(\d+)/i.exec(trimmed)) == null ? void 0 : _j[1]) != null ? _l : (_k = /\b(\d+)\b/.exec(trimmed)) == null ? void 0 : _k[1]) != null ? _m : "";
+          case "ehentai": {
+            const match = /\/g\/(\d+)\/([0-9a-f]+)/i.exec(trimmed);
+            return match ? `${match[1]}/${match[2]}` : "";
+          }
+          case "hitomi":
+            return (_s = (_r = (_p = (_n = /galleries\/(\d+)/i.exec(trimmed)) == null ? void 0 : _n[1]) != null ? _p : (_o = /\/(\d+)\.html/i.exec(trimmed)) == null ? void 0 : _o[1]) != null ? _r : (_q = /\b(\d{4,})\b/.exec(trimmed)) == null ? void 0 : _q[1]) != null ? _s : "";
+          default:
+            return "";
+        }
+      };
+      exports.extractRemoteId = extractRemoteId;
+      var canonicalUrl = (site, id) => {
+        switch (site) {
+          case "nhentai":
+            return `https://nhentai.net/g/${id}/`;
+          case "hentairead":
+            return `https://hentairead.com/hentai/${encodeURI(id)}/`;
+          case "hentainexus":
+            return `https://hentainexus.com/view/${id}`;
+          case "hentai2read":
+            return `https://hentai2read.com/${id.replace(/^\/+/, "")}/`;
+          case "pandachaika":
+            return `https://panda.chaika.moe/archive/${id}`;
+          case "ehentai": {
+            const [gid, token] = id.split("/");
+            return token ? `https://e-hentai.org/g/${gid}/${token}/` : `https://e-hentai.org/g/${gid}/`;
+          }
+          case "hitomi":
+            return `https://hitomi.la/galleries/${id}.html`;
+          default:
+            return id;
+        }
+      };
+      exports.canonicalUrl = canonicalUrl;
+      var refererForImage = (url) => {
+        const site = (0, exports.siteFromHost)((0, exports.hostOf)(url));
+        switch (site) {
+          case "nhentai":
+            return "https://nhentai.net/";
+          case "hentairead":
+            return "https://hentairead.com/";
+          case "hentainexus":
+            return "https://hentainexus.com/";
+          case "hentai2read":
+            return "https://hentai2read.com/";
+          case "pandachaika":
+            return "https://panda.chaika.moe/";
+          case "ehentai":
+            return (0, exports.hostOf)(url).includes("exhentai") ? "https://exhentai.org/" : "https://e-hentai.org/";
+          case "hitomi":
+            return "https://hitomi.la/";
+          default:
+            return void 0;
+        }
+      };
+      exports.refererForImage = refererForImage;
+    }
+  });
+
+  // __temp__/sources/r2-library/chapters.js
+  var require_chapters = __commonJS({
+    "__temp__/sources/r2-library/chapters.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.isBucketArchive = exports.isFolderChapter = exports.isChaptersJsonName = exports.parseChaptersJson = exports.resolveChapterTarget = exports.decodePagesChapter = exports.encodePagesChapter = void 0;
+      var base64_1 = require_base64();
+      var archive_1 = require_archive();
+      var crypto_1 = require_crypto();
+      var sites_1 = require_sites();
+      var toUrlSafeB64 = (value) => (0, crypto_1.bytesToBase64)((0, crypto_1.utf8Encode)(value)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+      var fromUrlSafeB64 = (value) => {
+        const padded = value.replaceAll("-", "+").replaceAll("_", "/");
+        const pad = padded.length % 4 === 0 ? "" : "=".repeat(4 - padded.length % 4);
+        return (0, base64_1.base64Decode)(`${padded}${pad}`);
+      };
+      var encodePagesChapter = (urls) => `pages:${toUrlSafeB64(JSON.stringify(urls))}`;
+      exports.encodePagesChapter = encodePagesChapter;
+      var decodePagesChapter = (url) => {
+        if (!url.startsWith("pages:"))
+          return null;
+        try {
+          const parsed = JSON.parse(fromUrlSafeB64(url.slice(6)));
+          return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry === "string" && !!entry) : null;
+        } catch {
+          return null;
+        }
+      };
+      exports.decodePagesChapter = decodePagesChapter;
+      var resolveChapterTarget = (raw, seriesPrefix) => {
+        const trimmed = raw.trim();
+        if (trimmed.startsWith("pages:") || (0, sites_1.isAbsoluteHttpUrl)(trimmed))
+          return trimmed;
+        const prefix = seriesPrefix.replace(/\/+$/, "");
+        const relative = trimmed.replace(/^\/+/, "");
+        return prefix ? `${prefix}/${relative}` : relative;
+      };
+      exports.resolveChapterTarget = resolveChapterTarget;
+      var stringField = (obj, keys) => {
+        for (const key of keys) {
+          const value = obj[key];
+          if (typeof value === "string" && value.trim())
+            return value.trim();
+          if (typeof value === "number")
+            return String(value);
+        }
+        return "";
+      };
+      var asObject = (entry) => entry && typeof entry === "object" && !Array.isArray(entry) ? entry : null;
+      var chapterList = (parsed) => {
+        if (Array.isArray(parsed))
+          return parsed;
+        if (parsed && typeof parsed === "object") {
+          const chapters = parsed.chapters;
+          if (Array.isArray(chapters))
+            return chapters;
+        }
+        return [];
+      };
+      var parseChaptersJson = (body, seriesPrefix = "") => {
+        let parsed;
+        try {
+          parsed = JSON.parse(body.trim().replace(/^\uFEFF/, ""));
+        } catch {
+          return [];
+        }
+        return chapterList(parsed).flatMap((entry, index) => {
+          const obj = asObject(entry);
+          const rawUrl = typeof entry === "string" ? entry.trim() : obj ? stringField(obj, ["url", "href", "link", "archive", "file", "key"]) : "";
+          const pages = Array.isArray(obj == null ? void 0 : obj.pages) ? obj.pages.filter((item) => typeof item === "string" && !!item.trim()) : [];
+          const source = obj ? stringField(obj, ["source", "site", "host"]) : "";
+          const rawId = obj ? stringField(obj, ["id"]) : "";
+          const title = obj ? stringField(obj, ["title", "name"]) : "";
+          let chapterUrl = "";
+          let displayFallback = `Chapter ${index + 1}`;
+          let siteLabel;
+          if (pages.length) {
+            chapterUrl = (0, exports.encodePagesChapter)(pages);
+            siteLabel = source || void 0;
+          } else {
+            const site = (0, sites_1.tryIdentifySite)(rawUrl, source || void 0);
+            if (site) {
+              const remoteId = rawId || (0, sites_1.extractRemoteId)(site, rawUrl);
+              chapterUrl = rawUrl || (0, sites_1.canonicalUrl)(site, remoteId);
+              displayFallback = `${site} ${remoteId}`.trim();
+              siteLabel = source || site;
+            } else if (rawUrl) {
+              chapterUrl = (0, exports.resolveChapterTarget)(rawUrl, seriesPrefix);
+              displayFallback = (0, archive_1.basename)(chapterUrl).replace(/\.(cbz|zip)$/i, "") || `Chapter ${index + 1}`;
+              siteLabel = source || void 0;
+            } else if (rawId && (0, sites_1.tryIdentifySite)("", source)) {
+              const resolved = (0, sites_1.tryIdentifySite)("", source);
+              chapterUrl = (0, sites_1.canonicalUrl)(resolved, rawId);
+              displayFallback = `${resolved} ${rawId}`;
+              siteLabel = source || resolved;
+            } else if (rawId) {
+              chapterUrl = (0, exports.resolveChapterTarget)(rawId, seriesPrefix);
+              displayFallback = (0, archive_1.basename)(chapterUrl).replace(/\.(cbz|zip)$/i, "") || `Chapter ${index + 1}`;
+              siteLabel = source || void 0;
+            } else {
+              return [];
+            }
+          }
+          const display = title || displayFallback;
+          const explicit = obj ? Number(stringField(obj, ["number"])) : Number.NaN;
+          const number = Number.isFinite(explicit) && explicit > 0 ? explicit : (0, archive_1.parseChapterNumber)(display, index + 1);
+          const scanlator = obj ? stringField(obj, ["scanlator", "group"]) || siteLabel : siteLabel;
+          return [
+            {
+              title: display,
+              number,
+              url: chapterUrl,
+              scanlator: scanlator || void 0
+            }
+          ];
+        });
+      };
+      exports.parseChaptersJson = parseChaptersJson;
+      var isChaptersJsonName = (name) => /^(chapters|chapter-list|chapter_list)\.json$/i.test(name);
+      exports.isChaptersJsonName = isChaptersJsonName;
+      var isFolderChapter = (url) => !(0, sites_1.isAbsoluteHttpUrl)(url) && !url.startsWith("pages:") && url.endsWith("/");
+      exports.isFolderChapter = isFolderChapter;
+      var isBucketArchive = (url) => !(0, sites_1.isAbsoluteHttpUrl)(url) && !url.startsWith("pages:") && (0, archive_1.isArchiveName)(url);
+      exports.isBucketArchive = isBucketArchive;
+    }
+  });
+
   // __temp__/sources/r2-library/config.js
   var require_config = __commonJS({
     "__temp__/sources/r2-library/config.js"(exports) {
@@ -3469,7 +3814,8 @@ var SourcePackage = (() => {
         secretAccessKey: "secretAccessKey",
         bucket: "bucket",
         endpoint: "endpoint",
-        prefix: "prefix"
+        prefix: "prefix",
+        publicBaseUrl: "publicBaseUrl"
       };
       var readString = async (key) => {
         var _a;
@@ -3492,7 +3838,8 @@ var SourcePackage = (() => {
           secretAccessKey,
           bucket,
           endpoint: endpointOverride.replace(/\/+$/, "") || `https://${accountId}.r2.cloudflarestorage.com`,
-          prefix: prefixRaw.replace(/^\/+|\/+$/g, "")
+          prefix: prefixRaw.replace(/^\/+|\/+$/g, ""),
+          publicBaseUrl: (await readString(exports.SETTINGS.publicBaseUrl)).replace(/\/+$/, "")
         };
       };
       exports.loadConfig = loadConfig;
@@ -3513,8 +3860,1658 @@ var SourcePackage = (() => {
         await write(exports.SETTINGS.bucket);
         await write(exports.SETTINGS.endpoint, true);
         await write(exports.SETTINGS.prefix, true);
+        await write(exports.SETTINGS.publicBaseUrl, true);
       };
       exports.saveConfig = saveConfig;
+    }
+  });
+
+  // __temp__/sources/_shared/html.js
+  var require_html = __commonJS({
+    "__temp__/sources/_shared/html.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.base64Decode = exports.imageFromTag = exports.metaContent = exports.collectBlocks = exports.innerHtml = exports.allMatches = exports.firstMatch = exports.attr = exports.stripTags = exports.decodeEntities = void 0;
+      var decodeEntities = (value) => value.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code))).replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(Number.parseInt(code, 16)));
+      exports.decodeEntities = decodeEntities;
+      var stripTags = (value) => (0, exports.decodeEntities)(value.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+      exports.stripTags = stripTags;
+      var attr = (tag, name) => {
+        var _a, _b;
+        const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
+        const raw = (_b = (_a = match == null ? void 0 : match[1]) != null ? _a : match == null ? void 0 : match[2]) != null ? _b : match == null ? void 0 : match[3];
+        return raw == null ? void 0 : (0, exports.decodeEntities)(raw);
+      };
+      exports.attr = attr;
+      var firstMatch = (html, pattern) => {
+        const match = pattern.exec(html);
+        return match == null ? void 0 : match[1];
+      };
+      exports.firstMatch = firstMatch;
+      var allMatches = (html, pattern) => {
+        const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+        const global = new RegExp(pattern.source, flags);
+        const values = [];
+        let match;
+        while (match = global.exec(html)) {
+          if (match[1] != null)
+            values.push(match[1]);
+        }
+        return values;
+      };
+      exports.allMatches = allMatches;
+      var innerHtml = (html, openTagPattern) => {
+        var _a, _b;
+        const open = openTagPattern.exec(html);
+        if (!open || open.index == null)
+          return void 0;
+        const start = open.index + open[0].length;
+        const tagName = (_b = (_a = open[0].match(/^<\/?([a-z0-9]+)/i)) == null ? void 0 : _a[1]) == null ? void 0 : _b.toLowerCase();
+        if (!tagName)
+          return void 0;
+        const rest = html.slice(start);
+        const close = new RegExp(`</${tagName}\\s*>`, "i").exec(rest);
+        return close ? rest.slice(0, close.index) : rest;
+      };
+      exports.innerHtml = innerHtml;
+      var collectBlocks = (html, openPattern, tagName) => {
+        const flags = openPattern.flags.includes("g") ? openPattern.flags : `${openPattern.flags}g`;
+        const global = new RegExp(openPattern.source, flags);
+        const openTag = new RegExp(`<${tagName}\\b`, "gi");
+        const closeTag = new RegExp(`</${tagName}\\s*>`, "gi");
+        const blocks = [];
+        let match;
+        while (match = global.exec(html)) {
+          const start = match.index;
+          let depth = 1;
+          let cursor = start + match[0].length;
+          while (cursor < html.length && depth > 0) {
+            openTag.lastIndex = cursor;
+            closeTag.lastIndex = cursor;
+            const nextOpen = openTag.exec(html);
+            const nextClose = closeTag.exec(html);
+            if (!nextClose) {
+              cursor = html.length;
+              break;
+            }
+            if (nextOpen && nextOpen.index < nextClose.index) {
+              depth += 1;
+              cursor = nextOpen.index + nextOpen[0].length;
+            } else {
+              depth -= 1;
+              cursor = nextClose.index + nextClose[0].length;
+            }
+          }
+          blocks.push(html.slice(start, cursor));
+          global.lastIndex = cursor;
+        }
+        return blocks;
+      };
+      exports.collectBlocks = collectBlocks;
+      var metaContent = (html, property) => {
+        var _a;
+        const pattern = new RegExp(`<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']|<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${property}["']`, "i");
+        const match = pattern.exec(html);
+        return (_a = match == null ? void 0 : match[1]) != null ? _a : match == null ? void 0 : match[2];
+      };
+      exports.metaContent = metaContent;
+      var imageFromTag = (imgTag) => {
+        var _a, _b, _c;
+        const candidates = [
+          (0, exports.attr)(imgTag, "data-src"),
+          (0, exports.attr)(imgTag, "data-lazy-src"),
+          (0, exports.attr)(imgTag, "data-cfsrc")
+        ];
+        const srcset = (_a = (0, exports.attr)(imgTag, "srcset")) != null ? _a : (0, exports.attr)(imgTag, "data-srcset");
+        if (srcset) {
+          const best = srcset.split(",").map((part) => {
+            const [url, width] = part.trim().split(/\s+/);
+            return {
+              url: url != null ? url : "",
+              width: Number.parseInt((width != null ? width : "0").replace(/\D/g, ""), 10) || 0
+            };
+          }).sort((a, b) => b.width - a.width)[0];
+          if (best == null ? void 0 : best.url)
+            candidates.push(best.url);
+        }
+        candidates.push((0, exports.attr)(imgTag, "src"));
+        return (_c = (_b = candidates.find((value) => !!(value == null ? void 0 : value.trim()))) == null ? void 0 : _b.trim()) != null ? _c : "";
+      };
+      exports.imageFromTag = imageFromTag;
+      var base64_1 = require_base64();
+      Object.defineProperty(exports, "base64Decode", { enumerable: true, get: function() {
+        return base64_1.base64Decode;
+      } });
+    }
+  });
+
+  // __temp__/sources/_shared/cloudflare.js
+  var require_cloudflare = __commonJS({
+    "__temp__/sources/_shared/cloudflare.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.assertCloudflareCleared = exports.cloudflareFromHeaders = exports.originOf = exports.looksLikeCloudflare = exports.throwCloudflare = void 0;
+      var throwCloudflare = (resolutionURL) => {
+        throw new CloudflareError(resolutionURL);
+      };
+      exports.throwCloudflare = throwCloudflare;
+      var looksLikeCloudflare = (body) => /just a moment|cf-mitigated|challenge-platform|cdn-cgi\/challenge|cf-chl|cf-turnstile|challenges\.cloudflare\.com|attention required|verify you are human|checking your browser|enable javascript and cookies/i.test(body);
+      exports.looksLikeCloudflare = looksLikeCloudflare;
+      var originOf = (url) => {
+        const match = /^(https?:\/\/[^/?#]+)/i.exec(url);
+        return (match == null ? void 0 : match[1]) ? `${match[1]}/` : url;
+      };
+      exports.originOf = originOf;
+      var header = (headers, name) => {
+        var _a;
+        if (!headers)
+          return "";
+        if (typeof headers.get === "function") {
+          return String((_a = headers.get(name)) != null ? _a : "").toLowerCase();
+        }
+        const obj = headers;
+        const want = name.toLowerCase();
+        for (const [key, value] of Object.entries(obj)) {
+          if (key.toLowerCase() === want)
+            return String(value != null ? value : "").toLowerCase();
+        }
+        return "";
+      };
+      var cloudflareFromHeaders = (status, headers) => {
+        if (header(headers, "cf-mitigated").includes("challenge"))
+          return true;
+        if (header(headers, "server").includes("cloudflare") && [403, 503, 429].includes(status)) {
+          return true;
+        }
+        const location = header(headers, "location");
+        if (location.includes("cdn-cgi/challenge"))
+          return true;
+        return false;
+      };
+      exports.cloudflareFromHeaders = cloudflareFromHeaders;
+      var assertCloudflareCleared = async (client, resolutionURL, probeURLs = [resolutionURL]) => {
+        var _a, _b;
+        const urls = probeURLs.length ? probeURLs : [resolutionURL];
+        for (const url of urls) {
+          try {
+            const response = await client.request({
+              url,
+              method: "GET",
+              timeout: 2e4
+            });
+            if ((0, exports.cloudflareFromHeaders)(response.status, response.headers)) {
+              (0, exports.throwCloudflare)(resolutionURL);
+            }
+            const body = await response.text();
+            if ((0, exports.looksLikeCloudflare)(body) || (0, exports.cloudflareFromHeaders)(response.status, response.headers)) {
+              (0, exports.throwCloudflare)(resolutionURL);
+            }
+            if (!response.ok && header(response.headers, "server").includes("cloudflare")) {
+              (0, exports.throwCloudflare)(resolutionURL);
+            }
+            if (response.ok)
+              return;
+          } catch (error) {
+            const message = String((_a = error == null ? void 0 : error.message) != null ? _a : error);
+            const name = String((_b = error == null ? void 0 : error.name) != null ? _b : "");
+            if (name.includes("Cloudflare") || message.includes("Cloudflare") || message.includes("cloudflare")) {
+              (0, exports.throwCloudflare)(resolutionURL);
+            }
+          }
+        }
+        (0, exports.throwCloudflare)(resolutionURL);
+      };
+      exports.assertCloudflareCleared = assertCloudflareCleared;
+    }
+  });
+
+  // __temp__/sources/_shared/http.js
+  var require_http2 = __commonJS({
+    "__temp__/sources/_shared/http.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.withQuery = exports.joinUrl = exports.absoluteUrl = exports.getJson = exports.getText = exports.fetchBytesRange = exports.fetchBytes = exports.fetchJson = exports.postEmpty = exports.postForm = exports.fetchText = exports.http = void 0;
+      var cloudflare_1 = require_cloudflare();
+      var fallbackClient;
+      var http = () => {
+        if (!fallbackClient) {
+          fallbackClient = new HttpClient({
+            timeout: 45e3,
+            validateStatus: () => true
+          });
+        }
+        return fallbackClient;
+      };
+      exports.http = http;
+      var resolveClient = (options) => {
+        var _a;
+        return (_a = options == null ? void 0 : options.client) != null ? _a : (0, exports.http)();
+      };
+      var mergeHeaders = (options) => {
+        var _a;
+        const headers = { ...(_a = options == null ? void 0 : options.headers) != null ? _a : {} };
+        if (options == null ? void 0 : options.referer)
+          headers.Referer = options.referer;
+        return Object.keys(headers).length ? headers : void 0;
+      };
+      var assertNotCloudflare = (url, status, body, headers, resolutionURL) => {
+        const resolution = resolutionURL != null ? resolutionURL : (0, cloudflare_1.originOf)(url);
+        if ((0, cloudflare_1.cloudflareFromHeaders)(status, headers) || (0, cloudflare_1.looksLikeCloudflare)(body)) {
+          (0, cloudflare_1.throwCloudflare)(resolution);
+        }
+      };
+      var fetchText = async (url, options) => {
+        var _a;
+        const response = await resolveClient(options).request({
+          url,
+          method: "GET",
+          headers: mergeHeaders(options),
+          timeout: options == null ? void 0 : options.timeout
+        });
+        if ((0, cloudflare_1.cloudflareFromHeaders)(response.status, response.headers)) {
+          (0, cloudflare_1.throwCloudflare)((_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url));
+        }
+        const body = await response.text();
+        assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
+        if (!response.ok) {
+          throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
+        }
+        return body;
+      };
+      exports.fetchText = fetchText;
+      var postForm = async (url, fields, options) => {
+        var _a;
+        const entries = Array.isArray(fields) ? fields : Object.entries(fields);
+        const body = entries.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join("&");
+        const response = await resolveClient(options).request({
+          url,
+          method: "POST",
+          body,
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            ...mergeHeaders(options)
+          }
+        });
+        if ((0, cloudflare_1.cloudflareFromHeaders)(response.status, response.headers)) {
+          (0, cloudflare_1.throwCloudflare)((_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url));
+        }
+        const text = await response.text();
+        assertNotCloudflare(url, response.status, text, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
+        if (!response.ok) {
+          throw new Error(`POST ${url} failed (${response.status}): ${text.slice(0, 180)}`);
+        }
+        return text;
+      };
+      exports.postForm = postForm;
+      var postEmpty = async (url, options) => {
+        var _a;
+        const response = await resolveClient(options).request({
+          url,
+          method: "POST",
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            ...mergeHeaders(options)
+          }
+        });
+        if ((0, cloudflare_1.cloudflareFromHeaders)(response.status, response.headers)) {
+          (0, cloudflare_1.throwCloudflare)((_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url));
+        }
+        const text = await response.text();
+        assertNotCloudflare(url, response.status, text, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
+        if (!response.ok) {
+          throw new Error(`POST ${url} failed (${response.status}): ${text.slice(0, 180)}`);
+        }
+        return text;
+      };
+      exports.postEmpty = postEmpty;
+      var fetchJson = async (url, options) => JSON.parse(await (0, exports.fetchText)(url, options));
+      exports.fetchJson = fetchJson;
+      var fetchBytes = async (url, options) => {
+        var _a;
+        const response = await resolveClient(options).request({
+          url,
+          method: "GET",
+          headers: mergeHeaders(options),
+          timeout: options == null ? void 0 : options.timeout
+        });
+        if (!response.ok) {
+          const body = await response.text();
+          assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
+          throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
+        }
+        if (response.headers.get("cf-mitigated")) {
+          (0, cloudflare_1.throwCloudflare)((_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url));
+        }
+        return response.bytes();
+      };
+      exports.fetchBytes = fetchBytes;
+      var fetchBytesRange = async (url, range, options) => {
+        var _a;
+        const headers = { ...(_a = mergeHeaders(options)) != null ? _a : {} };
+        if (range) {
+          headers.Range = `bytes=${range.start}-${range.end}`;
+        }
+        const response = await resolveClient(options).request({
+          url,
+          method: "GET",
+          headers,
+          timeout: options == null ? void 0 : options.timeout
+        });
+        if (!(response.ok || response.status === 206)) {
+          const body = await response.text();
+          assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
+          throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
+        }
+        return response.bytes();
+      };
+      exports.fetchBytesRange = fetchBytesRange;
+      exports.getText = exports.fetchText;
+      exports.getJson = exports.fetchJson;
+      var absoluteUrl = (base, maybeRelative) => {
+        var _a, _b;
+        const value = maybeRelative.trim();
+        if (!value)
+          return value;
+        if (/^https?:\/\//i.test(value) || value.startsWith("data:"))
+          return value;
+        if (value.startsWith("//")) {
+          const protocol = base.startsWith("https") ? "https:" : "http:";
+          return `${protocol}${value}`;
+        }
+        const origin = (_b = (_a = base.match(/^(https?:\/\/[^/?#]+)/i)) == null ? void 0 : _a[1]) != null ? _b : base;
+        if (value.startsWith("/"))
+          return `${origin}${value}`;
+        return `${origin}/${value}`;
+      };
+      exports.absoluteUrl = absoluteUrl;
+      var joinUrl = (base, ...parts) => {
+        let url = base.replace(/\/+$/, "");
+        for (const part of parts) {
+          const cleaned = part.replace(/^\/+|\/+$/g, "");
+          if (!cleaned)
+            continue;
+          url += `/${cleaned}`;
+        }
+        return url;
+      };
+      exports.joinUrl = joinUrl;
+      var withQuery = (url, params) => {
+        const pairs = Object.entries(params).filter((entry) => entry[1] != null);
+        if (!pairs.length)
+          return url;
+        const query = pairs.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join("&");
+        return url.includes("?") ? `${url}&${query}` : `${url}?${query}`;
+      };
+      exports.withQuery = withQuery;
+    }
+  });
+
+  // __temp__/sources/_shared/zip.js
+  var require_zip = __commonJS({
+    "__temp__/sources/_shared/zip.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.extractZipImagePages = void 0;
+      var fflate_1 = require_browser();
+      var base64_1 = require_base64();
+      var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set([
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".gif",
+        ".avif",
+        ".bmp"
+      ]);
+      var basename = (path) => {
+        var _a;
+        const parts = path.replace(/\/+$/, "").split("/");
+        return (_a = parts[parts.length - 1]) != null ? _a : path;
+      };
+      var naturalCompare = (left, right) => left.localeCompare(right, void 0, { numeric: true, sensitivity: "base" });
+      var extractZipImagePages = (archiveBytes) => {
+        const files = (0, fflate_1.unzipSync)(archiveBytes);
+        const pages = Object.entries(files).filter(([name, data]) => {
+          if (!(data == null ? void 0 : data.length))
+            return false;
+          if (name.endsWith("/"))
+            return false;
+          if (name.startsWith("__MACOSX/"))
+            return false;
+          if (name.split("/").some((part) => part.startsWith(".")))
+            return false;
+          const lower = name.toLowerCase();
+          const dot = lower.lastIndexOf(".");
+          if (dot < 0)
+            return false;
+          return IMAGE_EXTENSIONS.has(lower.slice(dot));
+        }).map(([name, data]) => ({ name: basename(name), data })).sort((left, right) => naturalCompare(left.name, right.name)).map(({ name, data }) => ({
+          name,
+          b64: (0, base64_1.bytesToBase64)(data)
+        }));
+        if (!pages.length) {
+          throw new Error("Archive contained no readable image pages");
+        }
+        return pages;
+      };
+      exports.extractZipImagePages = extractZipImagePages;
+    }
+  });
+
+  // __temp__/sources/nhentai/api.js
+  var require_api = __commonJS({
+    "__temp__/sources/nhentai/api.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.isLastPage = exports.galleryById = exports.latestGalleries = exports.searchGalleries = exports.thumbServer = exports.imageServer = exports.loadConfig = exports.headers = exports.API_URL = exports.BASE_URL = void 0;
+      var http_1 = require_http2();
+      exports.BASE_URL = "https://nhentai.net";
+      exports.API_URL = `${exports.BASE_URL}/api/v2`;
+      var DEFAULT_CONFIG = {
+        image_servers: [1, 2, 3, 4].map((n) => `https://i${n}.nhentai.net`),
+        thumb_servers: [1, 2, 3, 4].map((n) => `https://t${n}.nhentai.net`)
+      };
+      var cachedConfig;
+      exports.headers = {
+        Referer: `${exports.BASE_URL}/`,
+        Accept: "application/json"
+      };
+      var loadConfig = async () => {
+        if (cachedConfig)
+          return cachedConfig;
+        try {
+          cachedConfig = await (0, http_1.getJson)(`${exports.API_URL}/config`, {
+            headers: exports.headers,
+            referer: `${exports.BASE_URL}/`
+          });
+        } catch {
+          cachedConfig = DEFAULT_CONFIG;
+        }
+        return cachedConfig;
+      };
+      exports.loadConfig = loadConfig;
+      var imageServer = async () => {
+        var _a;
+        const config = await (0, exports.loadConfig)();
+        const servers = ((_a = config.image_servers) == null ? void 0 : _a.length) ? config.image_servers : DEFAULT_CONFIG.image_servers;
+        return servers[Math.floor(Math.random() * servers.length)];
+      };
+      exports.imageServer = imageServer;
+      var thumbServer = async () => {
+        var _a;
+        const config = await (0, exports.loadConfig)();
+        const servers = ((_a = config.thumb_servers) == null ? void 0 : _a.length) ? config.thumb_servers : DEFAULT_CONFIG.thumb_servers;
+        return servers[Math.floor(Math.random() * servers.length)];
+      };
+      exports.thumbServer = thumbServer;
+      var searchGalleries = async (options) => {
+        const url = (0, http_1.withQuery)(`${exports.API_URL}/search`, {
+          query: options.query.trim() || '""',
+          page: String(options.page),
+          sort: options.sort
+        });
+        return (0, http_1.getJson)(url, {
+          headers: exports.headers,
+          referer: `${exports.BASE_URL}/`
+        });
+      };
+      exports.searchGalleries = searchGalleries;
+      var latestGalleries = async (page) => (0, http_1.getJson)(`${exports.API_URL}/galleries?page=${page}`, { headers: exports.headers, referer: `${exports.BASE_URL}/` });
+      exports.latestGalleries = latestGalleries;
+      var galleryById = async (id) => (0, http_1.getJson)(`${exports.API_URL}/galleries/${id}`, {
+        headers: exports.headers,
+        referer: `${exports.BASE_URL}/`
+      });
+      exports.galleryById = galleryById;
+      var isLastPage = (response, page) => {
+        if (response.num_pages != null)
+          return page >= response.num_pages;
+        if (response.total != null && response.per_page > 0) {
+          return page * response.per_page >= response.total;
+        }
+        return response.result.length === 0;
+      };
+      exports.isLastPage = isLastPage;
+    }
+  });
+
+  // __temp__/sources/_shared/item.js
+  var require_item2 = __commonJS({
+    "__temp__/sources/_shared/item.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.PAGE_SIZE = exports.pageSize = exports.matureItem = exports.itemFrom = void 0;
+      var types_1 = require_types();
+      var itemFrom = (id, title, coverImage, rating = types_1.ContentRating.MATURE) => ({
+        id,
+        title,
+        coverImage,
+        rating
+      });
+      exports.itemFrom = itemFrom;
+      var matureItem = (options) => ({
+        ...(0, exports.itemFrom)(options.id, options.title, options.coverImage),
+        subtitle: options.subtitle,
+        webUrl: options.webUrl
+      });
+      exports.matureItem = matureItem;
+      exports.pageSize = 24;
+      exports.PAGE_SIZE = exports.pageSize;
+    }
+  });
+
+  // __temp__/sources/hentairead/constants.js
+  var require_constants = __commonJS({
+    "__temp__/sources/hentairead/constants.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.TEXT_FILTERS = exports.TYPES = exports.SORTS = exports.IMAGE_ACCEPT = exports.CF_RESOLVE = exports.MANGA = exports.BASE = void 0;
+      exports.BASE = "https://hentairead.com";
+      exports.MANGA = "hentai";
+      exports.CF_RESOLVE = `${exports.BASE}/hentai/?sortby=new`;
+      exports.IMAGE_ACCEPT = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8";
+      exports.SORTS = [
+        { id: "new", title: "Latest" },
+        { id: "alphabet", title: "A-Z" },
+        { id: "rating", title: "Rating" },
+        { id: "views", title: "Views" }
+      ];
+      exports.TYPES = [
+        { id: "4", title: "Doujinshi" },
+        { id: "52", title: "Manga" },
+        { id: "4798", title: "Artist CG" },
+        { id: "36278", title: "Western" }
+      ];
+      exports.TEXT_FILTERS = [
+        { id: "tags", name: "Tags", type: "manga_tag", hint: "Comma-separated. Prefix with - to exclude." },
+        { id: "artists", name: "Artists", type: "artist", hint: "Comma-separated" },
+        { id: "circles", name: "Circles", type: "circle", hint: "Comma-separated" },
+        { id: "characters", name: "Characters", type: "character", hint: "Comma-separated" },
+        { id: "collections", name: "Collections", type: "collection", hint: "Comma-separated" },
+        { id: "scanlators", name: "Scanlators", type: "scanlator", hint: "Comma-separated" },
+        { id: "conventions", name: "Conventions", type: "convention", hint: "Comma-separated" }
+      ];
+    }
+  });
+
+  // __temp__/sources/hentairead/parse.js
+  var require_parse = __commonJS({
+    "__temp__/sources/hentairead/parse.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.readerLanguageOrder = exports.parseChapterPages = exports.parsePageRange = exports.parseDetails = exports.parseUploadedDate = exports.parseGalleryId = exports.parseLanguages = exports.taxonomyNames = exports.parseListing = exports.hasNextPage = exports.readerUrl = exports.contentUrl = exports.searchUrl = exports.listingUrl = exports.parseMangaId = void 0;
+      var types_1 = require_types();
+      var html_1 = require_html();
+      var http_1 = require_http2();
+      var item_1 = require_item2();
+      var constants_1 = require_constants();
+      var CARD_OPEN = /<div\b[^>]*class=["'](?:[^"']*\s)?manga-item(?:\s[^"']*)?["'][^>]*>/gi;
+      var TITLE_LINK = /<a\b([^>]*\bmanga-item__link\b[^>]*)>([\s\S]*?)<\/a>/i;
+      var COVER_IMG = /(<img\b[^>]*\bmanga-item__img-inner\b[^>]*>)/i;
+      var BASE64_JSON = /eyJ[A-Za-z0-9+/=]{16,}/g;
+      var parseMangaId = (href) => {
+        const cleaned = href.replace(/[?#].*$/, "").replace(/\/+$/, "");
+        const match = cleaned.match(/\/hentai\/([^/]+)/i);
+        if (match == null ? void 0 : match[1])
+          return decodeURIComponent(match[1]);
+        const last = cleaned.split("/").filter(Boolean).pop();
+        return last ? decodeURIComponent(last) : cleaned;
+      };
+      exports.parseMangaId = parseMangaId;
+      var listingUrl = (page, sortby) => {
+        const path = page <= 1 ? `${constants_1.BASE}/${constants_1.MANGA}/` : `${constants_1.BASE}/${constants_1.MANGA}/page/${page}/`;
+        return `${path}?sortby=${encodeURIComponent(sortby)}`;
+      };
+      exports.listingUrl = listingUrl;
+      var searchUrl = (page, pairs) => {
+        const path = `${constants_1.BASE}/page/${Math.max(1, page)}/`;
+        if (!pairs.length)
+          return path;
+        const query = pairs.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
+        return `${path}?${query}`;
+      };
+      exports.searchUrl = searchUrl;
+      var contentUrl = (contentId) => `${constants_1.BASE}/${constants_1.MANGA}/${encodeURI(contentId).replace(/%2F/gi, "/")}/`;
+      exports.contentUrl = contentUrl;
+      var readerUrl = (contentId, language = "english") => {
+        const base = (0, exports.contentUrl)(contentId);
+        if (!language)
+          return `${base}p/1/`;
+        return `${base}${language}/p/1/`;
+      };
+      exports.readerUrl = readerUrl;
+      var hasNextPage = (html) => /<a\b[^>]*rel=["']next["']/i.test(html) || /class=["'][^"']*\bnextpostslink\b/i.test(html) || /class=["'][^"']*\bnext\b[^"']*\bpage-numbers\b/i.test(html);
+      exports.hasNextPage = hasNextPage;
+      var isUsableImage = (src) => !!src && !src.startsWith("data:") && !/placeholder|blank\.|spacer|1x1|logo|spinner|icon|avatar/i.test(src);
+      var listingCover = (imgTag) => {
+        var _a;
+        const src = ((_a = (0, html_1.attr)(imgTag, "src")) != null ? _a : "").trim();
+        if (isUsableImage(src))
+          return src;
+        return (0, html_1.imageFromTag)(imgTag);
+      };
+      var itemFromCard = (card) => {
+        var _a, _b, _c;
+        const link = TITLE_LINK.exec(card);
+        if (!link)
+          return void 0;
+        const tag = `<a ${link[1]}>`;
+        const href = (_a = (0, html_1.attr)(tag, "href")) != null ? _a : "";
+        const title = (0, html_1.stripTags)((_b = link[2]) != null ? _b : "") || (0, html_1.attr)(tag, "title") || "";
+        if (!href || !title)
+          return void 0;
+        const id = (0, exports.parseMangaId)(href);
+        if (!id || /\/page\/\d+/i.test(href))
+          return void 0;
+        const imgTag = (_c = (0, html_1.firstMatch)(card, COVER_IMG)) != null ? _c : (0, html_1.firstMatch)(card, /(<img\b[^>]*>)/i);
+        const cover = imgTag ? listingCover(imgTag) : "";
+        return (0, item_1.matureItem)({
+          id,
+          title,
+          coverImage: cover ? (0, http_1.absoluteUrl)(constants_1.BASE, cover) : void 0,
+          webUrl: (0, http_1.absoluteUrl)(constants_1.BASE, href)
+        });
+      };
+      var parseListing = (html) => {
+        var _a, _b, _c, _d;
+        const items = [];
+        const seen = /* @__PURE__ */ new Set();
+        const cards = (0, html_1.collectBlocks)(html, CARD_OPEN, "div");
+        const chunks = cards.length ? cards : html.split(/(?=<div\b[^>]*class=["'](?:[^"']*\s)?manga-item(?:\s))/i);
+        for (const chunk of chunks) {
+          const item = itemFromCard(chunk);
+          if (!item || seen.has(item.id))
+            continue;
+          seen.add(item.id);
+          items.push(item);
+        }
+        if (items.length)
+          return items;
+        const linkRe = /<a\b([^>]*\bmanga-item__link\b[^>]*)>([\s\S]*?)<\/a>/gi;
+        let match;
+        while (match = linkRe.exec(html)) {
+          const tag = `<a ${match[1]}>`;
+          const href = (_a = (0, html_1.attr)(tag, "href")) != null ? _a : "";
+          const title = (0, html_1.stripTags)((_b = match[2]) != null ? _b : "") || (0, html_1.attr)(tag, "title") || "";
+          if (!href || !title)
+            continue;
+          const id = (0, exports.parseMangaId)(href);
+          if (!id || seen.has(id) || /\/page\/\d+/i.test(href))
+            continue;
+          seen.add(id);
+          const before = html.slice(Math.max(0, match.index - 24e3), match.index);
+          const imgs = before.match(/<img\b[^>]*\bmanga-item__img-inner\b[^>]*>/gi);
+          const imgTag = imgs == null ? void 0 : imgs[imgs.length - 1];
+          const cover = imgTag ? listingCover(imgTag) : "";
+          items.push((0, item_1.matureItem)({
+            id,
+            title,
+            coverImage: cover ? (0, http_1.absoluteUrl)(constants_1.BASE, cover) : void 0,
+            webUrl: (0, http_1.absoluteUrl)(constants_1.BASE, href)
+          }));
+        }
+        if (items.length)
+          return items;
+        const h3Re = /<h3\b[^>]*>\s*<a\b([^>]*href=["'][^"']*\/hentai\/[^"']+["'][^>]*)>([\s\S]*?)<\/a>/gi;
+        while (match = h3Re.exec(html)) {
+          const tag = `<a ${match[1]}>`;
+          const href = (_c = (0, html_1.attr)(tag, "href")) != null ? _c : "";
+          const title = (0, html_1.stripTags)((_d = match[2]) != null ? _d : "") || (0, html_1.attr)(tag, "title") || "";
+          if (!href || !title)
+            continue;
+          const id = (0, exports.parseMangaId)(href);
+          if (!id || seen.has(id) || /\/page\/\d+/i.test(href))
+            continue;
+          seen.add(id);
+          const before = html.slice(Math.max(0, match.index - 24e3), match.index);
+          const imgs = before.match(/<img\b[^>]*(?:manga-item__img-inner|src=)[^>]*>/gi);
+          const imgTag = imgs == null ? void 0 : imgs[imgs.length - 1];
+          const cover = imgTag ? listingCover(imgTag) : "";
+          items.push((0, item_1.matureItem)({
+            id,
+            title,
+            coverImage: cover ? (0, http_1.absoluteUrl)(constants_1.BASE, cover) : void 0,
+            webUrl: (0, http_1.absoluteUrl)(constants_1.BASE, href)
+          }));
+        }
+        return items;
+      };
+      exports.parseListing = parseListing;
+      var capitalizeEach = (value) => value.split(" ").map((word) => word ? word.charAt(0).toUpperCase() + word.slice(1) : word).join(" ");
+      var isIndexHref = (href) => /-index\/?$/i.test(href.replace(/\/+$/, ""));
+      var taxonomyNames = (html, path) => {
+        var _a, _b, _c;
+        const pattern = new RegExp(`<a\\b([^>]*href=["'][^"']*${path}[^"']*["'][^>]*)>([\\s\\S]*?)<\\/a>`, "gi");
+        const names = [];
+        const seen = /* @__PURE__ */ new Set();
+        let match;
+        while (match = pattern.exec(html)) {
+          const href = (_a = (0, html_1.attr)(`<a ${match[1]}>`, "href")) != null ? _a : "";
+          if (isIndexHref(href) || !href.includes(path))
+            continue;
+          const span = (0, html_1.firstMatch)((_b = match[2]) != null ? _b : "", /<span\b[^>]*>([\s\S]*?)<\/span>/i);
+          const name = (0, html_1.stripTags)((_c = span != null ? span : match[2]) != null ? _c : "");
+          if (!name || seen.has(name.toLowerCase()))
+            continue;
+          seen.add(name.toLowerCase());
+          names.push(name);
+        }
+        return names;
+      };
+      exports.taxonomyNames = taxonomyNames;
+      var parseLanguages = (html) => {
+        var _a;
+        const slugs = [];
+        const re = /href=["'][^"']*\/language\/([^/"']+)\/?[^"']*["']/gi;
+        let match;
+        while (match = re.exec(html)) {
+          const slug = (_a = match[1]) == null ? void 0 : _a.toLowerCase();
+          if (slug && slug !== "language-index" && !slugs.includes(slug)) {
+            slugs.push(slug);
+          }
+        }
+        return slugs;
+      };
+      exports.parseLanguages = parseLanguages;
+      var parseGalleryId = (html) => {
+        const clip = (0, html_1.firstMatch)(html, /data-clipboard-text=["']#(\d+)["']/i);
+        if (clip)
+          return clip;
+        return (0, html_1.firstMatch)(html, /#\s*(\d{3,})/);
+      };
+      exports.parseGalleryId = parseGalleryId;
+      var parseUploadedDate = (html) => {
+        var _a;
+        const raw = (0, html_1.stripTags)((_a = (0, html_1.firstMatch)(html, /Uploaded:<\/div>\s*<div\b[^>]*>([\s\S]*?)<\/div>/i)) != null ? _a : "");
+        if (!raw)
+          return void 0;
+        const date = new Date(raw);
+        return Number.isNaN(date.getTime()) ? void 0 : date;
+      };
+      exports.parseUploadedDate = parseUploadedDate;
+      var labeledValue = (html, label) => {
+        var _a, _b;
+        return (0, html_1.stripTags)((_b = (_a = (0, html_1.firstMatch)(html, new RegExp(`${label}:<\\/div>[\\s\\S]{0,400}?<span[^>]*text-gray-100[^>]*>([\\s\\S]*?)<\\/span>`, "i"))) != null ? _a : (0, html_1.firstMatch)(html, new RegExp(`${label}:<\\/div>[\\s\\S]{0,400}?>(\\d[\\d.,KMB]*)`, "i"))) != null ? _b : "");
+      };
+      var parseDetails = (html, contentId) => {
+        var _a, _b, _c, _d;
+        const url = (0, exports.contentUrl)(contentId);
+        const title = (0, html_1.stripTags)((_b = (_a = (0, html_1.firstMatch)(html, /<div[^>]*class=["'][^"']*manga-titles[^"']*["'][^>]*>[\s\S]*?<h1\b[^>]*>([\s\S]*?)<\/h1>/i)) != null ? _a : (0, html_1.firstMatch)(html, /<h1\b[^>]*>([\s\S]*?)<\/h1>/i)) != null ? _b : "") || contentId;
+        const artists = (0, exports.taxonomyNames)(html, "/artist/");
+        const circles = (0, exports.taxonomyNames)(html, "/circle/");
+        const genres = (0, exports.taxonomyNames)(html, "/tag/");
+        const categories = (0, exports.taxonomyNames)(html, "/genre/");
+        const characters = [
+          ...(0, exports.taxonomyNames)(html, "/characters/"),
+          ...(0, exports.taxonomyNames)(html, "/character/")
+        ].filter((name, index, all) => all.indexOf(name) === index);
+        const parodies = (0, exports.taxonomyNames)(html, "/parody/");
+        const conventions = (0, exports.taxonomyNames)(html, "/convention/");
+        const scanlators = (0, exports.taxonomyNames)(html, "/scanlator/");
+        const languages = (0, exports.parseLanguages)(html);
+        const galleryId = (0, exports.parseGalleryId)(html);
+        const pagesCount = labeledValue(html, "Pages");
+        const views = labeledValue(html, "Views");
+        const year = (0, exports.taxonomyNames)(html, "/release/")[0];
+        const uploaded = (0, exports.parseUploadedDate)(html);
+        const altRaw = (0, html_1.stripTags)((_c = (0, html_1.firstMatch)(html, /<div[^>]*class=["'][^"']*manga-titles[^"']*["'][^>]*>[\s\S]*?<h2\b[^>]*>([\s\S]*?)<\/h2>/i)) != null ? _c : "") || "";
+        const additionalTitles = altRaw ? altRaw.split("|").map((t) => t.trim()).filter(Boolean) : [];
+        const parts = [];
+        if (characters.length) {
+          parts.push(`Characters: ${capitalizeEach(characters.join(", "))}`);
+        }
+        if (parodies.length) {
+          parts.push(`Parodies: ${capitalizeEach(parodies.join(", "))}`);
+        }
+        if (circles.length) {
+          parts.push(`Circles: ${capitalizeEach(circles.join(", "))}`);
+        }
+        if (conventions.length) {
+          parts.push(`Convention: ${capitalizeEach(conventions.join(", "))}`);
+        }
+        if (scanlators.length) {
+          parts.push(`Scanlators: ${capitalizeEach(scanlators.join(", "))}`);
+        }
+        if (languages.length) {
+          parts.push(`Language: ${languages.map(capitalizeEach).join(", ")}`);
+        }
+        if (additionalTitles.length) {
+          parts.push(`Alternative Titles:
+${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
+        }
+        if (pagesCount)
+          parts.push(`Pages: ${pagesCount}`);
+        let cover = (0, html_1.metaContent)(html, "og:image") || (0, html_1.metaContent)(html, "twitter:image") || "";
+        if (!cover) {
+          const img = (_d = (0, html_1.firstMatch)(html, /(<img\b[^>]*fetchpriority=["']high["'][^>]*>)/i)) != null ? _d : (0, html_1.firstMatch)(html, /(<img\b[^>]*class=["'][^"']*manga-item__img-inner[^>]*>)/i);
+          if (img)
+            cover = listingCover(img);
+        }
+        const author = circles.join(", ") || artists.join(", ") || void 0;
+        const artist = artists.join(", ") || circles.join(", ") || void 0;
+        const additionalDetails = {
+          ...galleryId ? { Gallery: galleryId } : {},
+          ...categories.length ? { Category: categories.join(", ") } : {},
+          ...year ? { Year: year } : {},
+          ...pagesCount ? { Pages: pagesCount } : {},
+          ...views ? { Views: views } : {}
+        };
+        const credits = [
+          ...author ? [{ name: author, role: "Author" }] : [],
+          ...artist && artist !== author ? [{ name: artist, role: "Artist" }] : []
+        ];
+        return {
+          title,
+          coverImage: cover ? (0, http_1.absoluteUrl)(constants_1.BASE, cover) : "",
+          webUrl: url,
+          rating: types_1.ContentRating.MATURE,
+          status: types_1.ContentStatus.COMPLETED,
+          summary: parts.join("\n\n") || void 0,
+          additionalTitles: additionalTitles.length ? additionalTitles : void 0,
+          additionalDetails: Object.keys(additionalDetails).length ? additionalDetails : void 0,
+          genres: genres.length ? genres.map((g) => ({
+            id: g.toLowerCase().replace(/\s+/g, "-"),
+            title: g
+          })) : void 0,
+          ...characters.length ? { characters: characters.map((name) => ({ name })) } : {},
+          ...credits.length ? { credits } : {},
+          context: {
+            ...scanlators.length ? { scanlator: scanlators.join(", ") } : {},
+            ...languages.length ? { languages } : {},
+            ...galleryId ? { galleryId } : {},
+            ...pagesCount ? { pageCount: pagesCount } : {},
+            ...uploaded ? { uploaded: uploaded.toISOString() } : {}
+          }
+        };
+      };
+      exports.parseDetails = parseDetails;
+      var parsePageRange = (query, minPages = 1, maxPages = 9999) => {
+        const num = Number.parseInt(query.replace(/\D/g, ""), 10);
+        const limited = (n = num) => Math.min(maxPages, Math.max(minPages, n));
+        if (Number.isNaN(num) || num < 0)
+          return [minPages, maxPages];
+        switch (query[0]) {
+          case "<":
+            return query[1] === "=" ? [minPages, limited()] : [minPages, limited(Math.max(minPages, num - 1))];
+          case ">":
+            return [limited(query[1] === "=" ? num : num + 1), maxPages];
+          case "=":
+            if (query[1] === ">")
+              return [limited(), maxPages];
+            if (query[1] === "<")
+              return [minPages, limited()];
+            return [limited(), limited()];
+          default:
+            return [limited(), limited()];
+        }
+      };
+      exports.parsePageRange = parsePageRange;
+      var parsePageBaseUrl = (html) => {
+        var _a, _b, _c;
+        const extra = (_a = (0, html_1.firstMatch)(html, /<script\b[^>]*id=["']single-chapter-js-extra["'][^>]*>([\s\S]*?)<\/script>/i)) != null ? _a : html;
+        return (_c = (_b = (0, html_1.firstMatch)(extra, /"baseUrl"\s*:\s*"([^"]+)"/)) != null ? _b : (0, html_1.firstMatch)(extra, /'baseUrl'\s*:\s*'([^']+)'/)) != null ? _c : "";
+      };
+      var imagesFromDto = (dto, pageBaseUrl) => {
+        var _a, _b, _c;
+        const images = (_c = (_b = (_a = dto.data) == null ? void 0 : _a.chapter) == null ? void 0 : _b.images) != null ? _c : [];
+        return images.map((image) => {
+          var _a2;
+          return ((_a2 = image.src) != null ? _a2 : "").trim();
+        }).filter(Boolean).map((src) => {
+          if (/^https?:\/\//i.test(src) || src.startsWith("//")) {
+            return (0, http_1.absoluteUrl)(constants_1.BASE, src);
+          }
+          if (!pageBaseUrl)
+            return "";
+          return `${pageBaseUrl.replace(/\/+$/, "")}/${src.replace(/^\/+/, "")}`;
+        }).filter(Boolean);
+      };
+      var dtoFromBase64 = (blob) => {
+        var _a, _b, _c;
+        try {
+          const parsed = JSON.parse((0, html_1.base64Decode)(blob));
+          if ((_c = (_b = (_a = parsed == null ? void 0 : parsed.data) == null ? void 0 : _a.chapter) == null ? void 0 : _b.images) == null ? void 0 : _c.length)
+            return parsed;
+        } catch {
+          return void 0;
+        }
+        return void 0;
+      };
+      var parseChapterPages = (html) => {
+        var _a, _b, _c, _d, _e;
+        const pageBaseUrl = parsePageBaseUrl(html);
+        const before = (_a = (0, html_1.firstMatch)(html, /<script\b[^>]*id=["']single-chapter-js-before["'][^>]*>([\s\S]*?)<\/script>/i)) != null ? _a : "";
+        const blobs = [
+          .../* @__PURE__ */ new Set([
+            ...(_b = before.match(BASE64_JSON)) != null ? _b : [],
+            ...(_c = html.match(BASE64_JSON)) != null ? _c : []
+          ])
+        ];
+        for (const blob of blobs) {
+          const dto = dtoFromBase64(blob);
+          if (!dto)
+            continue;
+          const urls2 = imagesFromDto(dto, pageBaseUrl);
+          if (urls2.length)
+            return urls2.map((url) => ({ url }));
+        }
+        const urls = [];
+        const imgRe = /<img\b[^>]*(?:wp-manga-chapter-img|reading-content)[^>]*>|<img\b[^>]*>/gi;
+        let img;
+        const reading = (_d = (0, html_1.firstMatch)(html, /<div\b[^>]*class=["'][^"']*reading-content[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)) != null ? _d : html;
+        while (img = imgRe.exec(reading)) {
+          const src = (0, html_1.imageFromTag)((_e = img[0]) != null ? _e : "");
+          if (isUsableImage(src) && !/hencover\.xyz/i.test(src)) {
+            urls.push((0, http_1.absoluteUrl)(constants_1.BASE, src));
+          }
+        }
+        return [...new Set(urls)].map((url) => ({ url }));
+      };
+      exports.parseChapterPages = parseChapterPages;
+      var readerLanguageOrder = (html) => {
+        const listed = (0, exports.parseLanguages)(html);
+        const order = [
+          ...listed.filter((lang) => lang === "english"),
+          "english",
+          ...listed.filter((lang) => lang !== "english"),
+          ""
+        ];
+        return order.filter((lang, index) => order.indexOf(lang) === index);
+      };
+      exports.readerLanguageOrder = readerLanguageOrder;
+    }
+  });
+
+  // __temp__/sources/hentainexus/decrypt.js
+  var require_decrypt = __commonJS({
+    "__temp__/sources/hentainexus/decrypt.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.decryptReaderPayload = void 0;
+      var PRIME_NUMBERS = [2, 3, 5, 7, 11, 13, 17, 19];
+      var PRIME_IDX_XOR_MASK = 12;
+      var base64ToBytes = (b64) => {
+        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        const clean = b64.replace(/[^A-Za-z0-9+/=]/g, "");
+        const bytes = [];
+        let buffer = 0;
+        let bits = 0;
+        for (let i = 0; i < clean.length; i++) {
+          const c = clean[i];
+          if (c === "=")
+            break;
+          const idx = chars.indexOf(c);
+          if (idx === -1)
+            continue;
+          buffer = buffer << 6 | idx;
+          bits += 6;
+          if (bits >= 8) {
+            bits -= 8;
+            bytes.push(buffer >>> bits & 255);
+          }
+        }
+        return bytes;
+      };
+      var decryptReaderPayload = (encoded) => {
+        const data = base64ToBytes(encoded);
+        const hostname = "hentainexus.com";
+        for (let i = 0; i < hostname.length; i++) {
+          data[i] = data[i] ^ hostname.charCodeAt(i);
+        }
+        const keyStream = [];
+        for (let i = 0; i < 64; i++)
+          keyStream.push(data[i] & 255);
+        const ciphertext = [];
+        for (let i = 64; i < data.length; i++)
+          ciphertext.push(data[i] & 255);
+        const digest = [];
+        for (let i = 0; i <= 255; i++)
+          digest.push(i);
+        let primeIdx = 0;
+        for (let i = 0; i < 64; i++) {
+          primeIdx = primeIdx ^ keyStream[i];
+          for (let j = 0; j < 8; j++) {
+            if ((primeIdx & 1) !== 0) {
+              primeIdx = primeIdx >>> 1 ^ PRIME_IDX_XOR_MASK;
+            } else {
+              primeIdx = primeIdx >>> 1;
+            }
+          }
+        }
+        primeIdx = primeIdx & 7;
+        let temp;
+        let key = 0;
+        for (let i = 0; i <= 255; i++) {
+          key = (key + digest[i] + keyStream[i % 64]) % 256;
+          temp = digest[i];
+          digest[i] = digest[key];
+          digest[key] = temp;
+        }
+        const q = PRIME_NUMBERS[primeIdx];
+        let k = 0;
+        let n = 0;
+        let p = 0;
+        let xorKey = 0;
+        let result = "";
+        for (let i = 0; i < ciphertext.length; i++) {
+          k = (k + q) % 256;
+          n = (p + digest[(n + digest[k]) % 256]) % 256;
+          p = (p + k + digest[k]) % 256;
+          temp = digest[k];
+          digest[k] = digest[n];
+          digest[n] = temp;
+          xorKey = digest[(n + digest[(k + digest[(xorKey + p) % 256]) % 256]) % 256];
+          result += String.fromCharCode(ciphertext[i] ^ xorKey);
+        }
+        return result;
+      };
+      exports.decryptReaderPayload = decryptReaderPayload;
+    }
+  });
+
+  // __temp__/sources/hentainexus/parse.js
+  var require_parse2 = __commonJS({
+    "__temp__/sources/hentainexus/parse.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.chapterForManga = exports.parseMangaDetails = exports.parseMangaList = exports.pagesFromReaderHtml = exports.imageFieldFor = exports.DEFAULT_IMAGE_FIELD = exports.BASE_URL = void 0;
+      var http_1 = require_http2();
+      var html_1 = require_html();
+      var item_1 = require_item2();
+      var types_1 = require_types();
+      var decrypt_1 = require_decrypt();
+      exports.BASE_URL = "https://hentainexus.com";
+      exports.DEFAULT_IMAGE_FIELD = "image_fallback";
+      var imageFieldFor = (format) => {
+        switch (format) {
+          case "source":
+            return "image_source";
+          case "avif":
+            return "image_avif";
+          default:
+            return exports.DEFAULT_IMAGE_FIELD;
+        }
+      };
+      exports.imageFieldFor = imageFieldFor;
+      var pagesFromReaderHtml = (html, imageField = exports.DEFAULT_IMAGE_FIELD) => {
+        const encoded = (0, html_1.firstMatch)(html, /initReader\("([^"]+)"/);
+        if (!encoded) {
+          throw new Error("Could not find initReader script; the page structure may have changed");
+        }
+        const decrypted = (0, decrypt_1.decryptReaderPayload)(encoded);
+        const parsed = JSON.parse(decrypted);
+        if (!Array.isArray(parsed)) {
+          throw new Error("Unexpected reader payload shape");
+        }
+        const images = parsed.filter((entry) => !!entry && typeof entry === "object" && entry.type === "image");
+        if (!images.length) {
+          throw new Error("No pages found for this chapter");
+        }
+        if (typeof images[0][imageField] !== "string" || !images[0][imageField]) {
+          throw new Error("Selected quality is not available. Login or select another quality.");
+        }
+        return images.map((image) => image[imageField]).filter((value) => typeof value === "string" && !!value).map((url) => (0, http_1.absoluteUrl)(exports.BASE_URL, url));
+      };
+      exports.pagesFromReaderHtml = pagesFromReaderHtml;
+      var TAG_COUNT_REGEX = /\s*\([\d,]+\)$/;
+      var ownTextFromCell = (cellHtml) => {
+        const withoutNested = cellHtml.replace(/<[^>]+>/g, " ");
+        return (0, html_1.stripTags)(withoutNested).replace(TAG_COUNT_REGEX, "").trim();
+      };
+      var tableCell = (html, label) => {
+        const pattern = new RegExp(`<td\\s+class="viewcolumn">\\s*${label}\\s*</td>\\s*<td[^>]*>([\\s\\S]*?)</td>`, "i");
+        return (0, html_1.firstMatch)(html, pattern);
+      };
+      var linksFromCell = (cellHtml) => (0, html_1.allMatches)(cellHtml, /<a[^>]*>([\s\S]*?)<\/a>/gi).map((entry) => (0, html_1.stripTags)(entry).replace(TAG_COUNT_REGEX, "").trim()).filter(Boolean);
+      var parseMangaList = (html) => {
+        var _a, _b, _c, _d, _e, _f, _g;
+        const items = [];
+        const seen = /* @__PURE__ */ new Set();
+        const columnPattern = /<div\s+class="column[^"]*"[^>]*>([\s\S]*?)(?=<div\s+class="column[^"]*"|<\/div>\s*<\/div>\s*<nav|\s*<\/div>\s*<\/section|$)/gi;
+        let match;
+        const global = new RegExp(columnPattern.source, "gi");
+        while (match = global.exec(html)) {
+          const block = (_a = match[1]) != null ? _a : "";
+          const href = (_b = (0, html_1.firstMatch)(block, /href="(\/view\/\d+)"/i)) != null ? _b : (0, html_1.firstMatch)(block, /href="(https?:\/\/[^"]*\/view\/\d+)"/i);
+          if (!href)
+            continue;
+          const idMatch = href.match(/\/view\/(\d+)/i);
+          if (!(idMatch == null ? void 0 : idMatch[1]))
+            continue;
+          const id = idMatch[1];
+          if (seen.has(id))
+            continue;
+          const title = (0, html_1.stripTags)((_d = (_c = (0, html_1.firstMatch)(block, /class="card-header-title"[^>]*>([\s\S]*?)<\/p>/i)) != null ? _c : (0, html_1.firstMatch)(block, /title="([^"]+)"/i)) != null ? _d : "") || id;
+          const imgTag = (_f = (_e = (0, html_1.firstMatch)(block, /(<img\b[^>]*>)/i)) != null ? _e : (0, html_1.firstMatch)(block, /(<img\b[^>]*\/>)/i)) != null ? _f : "";
+          const src = imgTag && ((0, html_1.attr)(imgTag, "data-src") || (0, html_1.attr)(imgTag, "data-lazy-src") || (0, html_1.attr)(imgTag, "data-cfsrc") || (0, html_1.attr)(imgTag, "src")) || (0, html_1.firstMatch)(block, /(?:data-src|data-lazy-src|src)="([^"]+)"/i) || "";
+          seen.add(id);
+          items.push((0, item_1.itemFrom)(id, title, src ? (0, http_1.absoluteUrl)(exports.BASE_URL, src) : void 0));
+        }
+        if (!items.length) {
+          const linkPattern = /href="(\/view\/(\d+))"[^>]*>[\s\S]*?class="card-header-title"[^>]*>([\s\S]*?)<\/p>/gi;
+          let linkMatch;
+          while (linkMatch = linkPattern.exec(html)) {
+            const id = linkMatch[2];
+            if (seen.has(id))
+              continue;
+            seen.add(id);
+            items.push((0, item_1.itemFrom)(id, (0, html_1.stripTags)((_g = linkMatch[3]) != null ? _g : id)));
+          }
+        }
+        const hasNextPage = /<a[^>]*class="[^"]*pagination-next[^"]*"[^>]*href="/i.test(html);
+        return { items, hasNextPage };
+      };
+      exports.parseMangaList = parseMangaList;
+      var parseMangaDetails = (html, contentId) => {
+        var _a, _b, _c, _d, _e;
+        const title = (0, html_1.stripTags)((_a = (0, html_1.firstMatch)(html, /<h1[^>]*class="[^"]*title[^"]*"[^>]*>([\s\S]*?)<\/h1>/i)) != null ? _a : "") || contentId;
+        const artists = linksFromCell((_b = tableCell(html, "Artist")) != null ? _b : "");
+        const authors = linksFromCell((_c = tableCell(html, "Author")) != null ? _c : "");
+        const credits = [.../* @__PURE__ */ new Set([...authors, ...artists])].map((name) => ({ name, role: artists.includes(name) ? "Artist" : "Author" }));
+        const detailKeys = [
+          "Circle",
+          "Event",
+          "Magazine",
+          "Parody",
+          "Publisher",
+          "Pages",
+          "Favorites"
+        ];
+        const additionalDetails = {};
+        const summaryLines = [];
+        for (const key of detailKeys) {
+          const cell = tableCell(html, key);
+          if (!cell)
+            continue;
+          const value = ownTextFromCell(cell) || linksFromCell(cell)[0] || "";
+          if (!value)
+            continue;
+          additionalDetails[key] = value;
+          summaryLines.push(`${key}: ${value}`);
+        }
+        const descriptionCell = tableCell(html, "Description");
+        const descriptionBody = descriptionCell ? (0, html_1.stripTags)(descriptionCell) : "";
+        const summary = [summaryLines.join("\n"), descriptionBody].filter(Boolean).join("\n\n").trim();
+        const tagsCell = (_d = tableCell(html, "Tags")) != null ? _d : "";
+        const genres = linksFromCell(tagsCell).map((name) => ({
+          id: name.toLowerCase().replace(/\s+/g, "-"),
+          title: name,
+          rating: types_1.ContentRating.MATURE
+        }));
+        const imgTag = (_e = (0, html_1.firstMatch)(html, /<figure[^>]*class="[^"]*image[^"]*"[^>]*>\s*(<img\b[^>]*>)/i)) != null ? _e : "";
+        const coverSrc = imgTag && ((0, html_1.attr)(imgTag, "data-src") || (0, html_1.attr)(imgTag, "data-lazy-src") || (0, html_1.attr)(imgTag, "src")) || (0, html_1.firstMatch)(html, /property="og:image"\s+content="([^"]+)"/i) || "";
+        const published = tableCell(html, "Published") ? ownTextFromCell(tableCell(html, "Published")) : void 0;
+        const favorites = Number((additionalDetails.Favorites || "").replace(/,/g, ""));
+        return {
+          content: {
+            title,
+            coverImage: coverSrc ? (0, http_1.absoluteUrl)(exports.BASE_URL, coverSrc) : "https://via.placeholder.com/300x450?text=No+Cover",
+            webUrl: `${exports.BASE_URL}/view/${contentId}`,
+            rating: types_1.ContentRating.MATURE,
+            status: types_1.ContentStatus.COMPLETED,
+            contentType: types_1.ContentType.COMIC,
+            summary: summary || void 0,
+            additionalDetails: Object.keys(additionalDetails).length > 0 ? additionalDetails : void 0,
+            statistics: Number.isFinite(favorites) ? { favorites } : void 0,
+            credits: credits.length ? credits : void 0,
+            genres: genres.length ? genres : void 0
+          },
+          published
+        };
+      };
+      exports.parseMangaDetails = parseMangaDetails;
+      var chapterForManga = (contentId, published) => {
+        let date;
+        if (published) {
+          const parsed = Date.parse(published);
+          if (!Number.isNaN(parsed))
+            date = new Date(parsed);
+        }
+        return {
+          id: contentId,
+          index: 0,
+          number: 1,
+          title: "Chapter",
+          date,
+          webUrl: `${exports.BASE_URL}/read/${contentId}`,
+          language: "en"
+        };
+      };
+      exports.chapterForManga = chapterForManga;
+    }
+  });
+
+  // __temp__/sources/hitomi/gg.js
+  var require_gg = __commonJS({
+    "__temp__/sources/hitomi/gg.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.hitomiHeaders = exports.resolveImageUrl = exports.thumbPathFromHash = exports.imageIdFromHash = exports.HITOMI_BASE = exports.LTN_URL = void 0;
+      var http_1 = require_http2();
+      var CDN = "gold-usergeneratedcontent.net";
+      exports.LTN_URL = `https://ltn.${CDN}`;
+      exports.HITOMI_BASE = "https://hitomi.la";
+      var HITOMI_HEADERS = {
+        Referer: `${exports.HITOMI_BASE}/`,
+        Origin: exports.HITOMI_BASE
+      };
+      var ggState = null;
+      var refreshGg = async () => {
+        const now = Date.now();
+        if (ggState && now - ggState.fetchedAt < 6e4)
+          return ggState;
+        const script = await (0, http_1.fetchText)(`${exports.LTN_URL}/gg.js?_=${now}`, {
+          headers: HITOMI_HEADERS
+        });
+        const defaultMatch = /var o = (\d)/.exec(script);
+        const caseMatch = /o = (\d); break;/.exec(script);
+        const commonMatch = /b: '(.+)'/.exec(script);
+        if (!defaultMatch || !caseMatch || !commonMatch) {
+          throw new Error("Failed to parse Hitomi gg.js");
+        }
+        const subdomainOffsetDefault = Number(defaultMatch[1]);
+        const caseOffset = Number(caseMatch[1]);
+        const subdomainOffsetMap = /* @__PURE__ */ new Map();
+        for (const match of script.matchAll(/case (\d+):/g)) {
+          subdomainOffsetMap.set(Number(match[1]), caseOffset);
+        }
+        ggState = {
+          fetchedAt: now,
+          subdomainOffsetDefault,
+          subdomainOffsetMap,
+          commonImageId: commonMatch[1]
+        };
+        return ggState;
+      };
+      var subdomainOffset = async (imageId) => {
+        var _a;
+        const state = await refreshGg();
+        return (_a = state.subdomainOffsetMap.get(imageId)) != null ? _a : state.subdomainOffsetDefault;
+      };
+      var commonImageId = async () => {
+        const state = await refreshGg();
+        return state.commonImageId;
+      };
+      var imageIdFromHash = (hash) => {
+        const match = /(..)(.)$/.exec(hash);
+        if (!match)
+          throw new Error(`Invalid Hitomi hash: ${hash}`);
+        return Number.parseInt(`${match[2]}${match[1]}`, 16);
+      };
+      exports.imageIdFromHash = imageIdFromHash;
+      var thumbPathFromHash = (hash) => hash.replace(/^.*(..)(.)$/, "$2/$1");
+      exports.thumbPathFromHash = thumbPathFromHash;
+      var resolveImageUrl = async (hash, options = {}) => {
+        const type = "webp";
+        const imageId = (0, exports.imageIdFromHash)(hash);
+        const offset = await subdomainOffset(imageId);
+        if (options.thumbnail) {
+          const subDomain2 = `${String.fromCharCode("a".charCodeAt(0) + offset)}tn`;
+          return `https://${subDomain2}.${CDN}/${type}bigtn/${(0, exports.thumbPathFromHash)(hash)}/${hash}.${type}`;
+        }
+        const commonId = await commonImageId();
+        const subDomain = `w${offset + 1}`;
+        return `https://${subDomain}.${CDN}/${commonId}${imageId}/${hash}.${type}`;
+      };
+      exports.resolveImageUrl = resolveImageUrl;
+      exports.hitomiHeaders = HITOMI_HEADERS;
+    }
+  });
+
+  // __temp__/sources/_shared/pool.js
+  var require_pool = __commonJS({
+    "__temp__/sources/_shared/pool.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.mapPool = void 0;
+      var mapPool = async (items, concurrency, worker) => {
+        const results = new Array(items.length);
+        let next = 0;
+        const runners = Array.from({ length: Math.min(Math.max(concurrency, 1), items.length || 1) }, async () => {
+          while (next < items.length) {
+            const index = next;
+            next += 1;
+            results[index] = await worker(items[index], index);
+          }
+        });
+        await Promise.all(runners);
+        return results;
+      };
+      exports.mapPool = mapPool;
+    }
+  });
+
+  // __temp__/sources/r2-library/gallery.js
+  var require_gallery = __commonJS({
+    "__temp__/sources/r2-library/gallery.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.imageUrlsOf = exports.pagesForChapterUrl = void 0;
+      var html_1 = require_html();
+      var http_1 = require_http2();
+      var zip_1 = require_zip();
+      var api_1 = require_api();
+      var parse_1 = require_parse();
+      var constants_1 = require_constants();
+      var parse_2 = require_parse2();
+      var gg_1 = require_gg();
+      var pool_1 = require_pool();
+      var chapters_1 = require_chapters();
+      var sites_1 = require_sites();
+      var HR_BASE = "https://hentairead.com";
+      var HN_BASE = "https://hentainexus.com";
+      var H2R_BASE = "https://hentai2read.com";
+      var H2R_IMAGE = "https://static.hentaicdn.com/hentai";
+      var CHAIKA_BASE = "https://panda.chaika.moe";
+      var EH_BASE = "https://e-hentai.org";
+      var EH_HEADERS = {
+        Cookie: "nw=1; uconfig=prn_n",
+        "User-Agent": "Mozilla/5.0 (compatible; Suwatte/1.0; +https://suwatte.mantton.com)"
+      };
+      var pagesUrlPattern = /'images'\s*:\s*\["(.*?),?"]/;
+      var fetchHitomiPages = async (id) => {
+        var _a;
+        const body = await (0, http_1.fetchText)(`${gg_1.LTN_URL}/galleries/${id}.js`, {
+          headers: gg_1.hitomiHeaders
+        });
+        const json = body.replace(/^[\s\S]*?var galleryinfo\s*=\s*/, "").trim();
+        const gallery = JSON.parse(json);
+        const files = (_a = gallery.files) != null ? _a : [];
+        if (!files.length)
+          return [];
+        await (0, gg_1.resolveImageUrl)(files[0].hash);
+        return (0, pool_1.mapPool)(files, 12, async (file) => ({
+          url: await (0, gg_1.resolveImageUrl)(file.hash)
+        }));
+      };
+      var collectEhPageLinks = async (galleryPath) => {
+        var _a, _b;
+        const urls = [];
+        let next = (0, http_1.absoluteUrl)(EH_BASE, galleryPath);
+        let hops = 0;
+        while (next && hops < 200) {
+          hops += 1;
+          const html = await (0, http_1.fetchText)(next, { headers: EH_HEADERS, referer: EH_BASE });
+          const gdt = (_a = (0, html_1.firstMatch)(html, /id="gdt"[^>]*>([\s\S]*?)(?:<table|<div id="c)/i)) != null ? _a : html;
+          const pageHrefs = (0, html_1.allMatches)(gdt, /<a[^>]+href="([^"]+\/s\/[^"]+)"/gi).map((href) => (0, http_1.absoluteUrl)(EH_BASE, (0, html_1.decodeEntities)(href)));
+          for (const href of pageHrefs) {
+            if (!urls.includes(href))
+              urls.push(href);
+          }
+          const navLinks = (_b = html.match(/<a[^>]*onclick="return false"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi)) != null ? _b : [];
+          let following = null;
+          for (const tag of navLinks) {
+            const href = (0, html_1.attr)(tag, "href");
+            const label = (0, html_1.stripTags)(tag);
+            if (label === ">" && href) {
+              following = (0, http_1.absoluteUrl)(EH_BASE, href);
+              break;
+            }
+          }
+          next = following;
+        }
+        return urls;
+      };
+      var resolveEhImage = async (pageUrl) => {
+        var _a;
+        const html = await (0, http_1.fetchText)(pageUrl, { headers: EH_HEADERS, referer: EH_BASE });
+        const img = (_a = (0, html_1.firstMatch)(html, /id="img"[^>]*src="([^"]+)"/i)) != null ? _a : (0, html_1.firstMatch)(html, /id="img"[^>]*data-src="([^"]+)"/i);
+        if (!img)
+          throw new Error(`No image on page ${pageUrl}`);
+        return (0, html_1.decodeEntities)(img);
+      };
+      var pagesForSite = async (site, url) => {
+        var _a, _b;
+        const id = (0, sites_1.extractRemoteId)(site, url);
+        switch (site) {
+          case "nhentai": {
+            const data = await (0, api_1.galleryById)(id);
+            const server = await (0, api_1.imageServer)();
+            return data.pages.map((page) => ({ url: `${server}/${page.path}` }));
+          }
+          case "hentairead": {
+            const slug = id || (0, parse_1.parseMangaId)(url);
+            const detailsHtml = await (0, http_1.fetchText)((0, parse_1.contentUrl)(slug), {
+              referer: HR_BASE,
+              cloudflareResolutionURL: constants_1.CF_RESOLVE
+            });
+            const order = (0, parse_1.readerLanguageOrder)(detailsHtml);
+            let lastError;
+            for (const language of order) {
+              try {
+                const html = await (0, http_1.fetchText)((0, parse_1.readerUrl)(slug, language), {
+                  referer: (0, parse_1.contentUrl)(slug),
+                  cloudflareResolutionURL: constants_1.CF_RESOLVE
+                });
+                const pages = (0, parse_1.parseChapterPages)(html);
+                if (pages.length)
+                  return pages;
+              } catch (error) {
+                lastError = error;
+              }
+            }
+            throw lastError != null ? lastError : new Error("HentaiRead reader scripts were missing.");
+          }
+          case "hentainexus": {
+            const html = await (0, http_1.fetchText)(`${HN_BASE}/read/${id}`, {
+              referer: HN_BASE,
+              cloudflareResolutionURL: HN_BASE
+            });
+            return (0, parse_2.pagesFromReaderHtml)(html).map((image) => ({ url: image }));
+          }
+          case "hentai2read": {
+            const chapterUrl = url.startsWith("http") ? url : `${H2R_BASE}/${id.replace(/^\/+/, "")}/`;
+            const html = await (0, http_1.fetchText)(chapterUrl, {
+              referer: `${H2R_BASE}/`,
+              cloudflareResolutionURL: `${H2R_BASE}/`
+            });
+            const pages = [];
+            const global = new RegExp(pagesUrlPattern.source, "g");
+            let match;
+            while (match = global.exec(html)) {
+              const blob = (_a = match[1]) != null ? _a : "";
+              for (const part of blob.split(",")) {
+                const path = part.trim().replace(/^"|"$/g, "").replace(/\\\//g, "/");
+                if (path)
+                  pages.push({ url: H2R_IMAGE + path });
+              }
+            }
+            if (!pages.length)
+              throw new Error("No hentai2read pages found");
+            return pages;
+          }
+          case "pandachaika": {
+            const detail = await (0, http_1.fetchJson)(`${CHAIKA_BASE}/api?archive=${id}`, {
+              referer: CHAIKA_BASE
+            });
+            let download = (_b = detail.download) != null ? _b : `${CHAIKA_BASE}/archive/${id}/download/`;
+            if (!/^https?:\/\//i.test(download)) {
+              download = `${CHAIKA_BASE}${download.startsWith("/") ? "" : "/"}${download}`;
+            }
+            if (!/\/download\/?$/i.test(download)) {
+              download = `${download.replace(/\/+$/, "")}/download/`;
+            }
+            const bytes = await (0, http_1.fetchBytes)(download, {
+              referer: CHAIKA_BASE,
+              timeout: 18e4
+            });
+            return (0, zip_1.extractZipImagePages)(bytes).map((page) => ({ b64: page.b64 }));
+          }
+          case "ehentai": {
+            const [gid, token] = id.split("/");
+            const origin = /exhentai\.org/i.test(url) ? "https://exhentai.org" : EH_BASE;
+            const path = token ? `/g/${gid}/${token}/?nw=always` : `/g/${gid}/?nw=always`;
+            const links = await collectEhPageLinks(origin === EH_BASE ? path : `${origin}${path}`);
+            const pages = (await (0, pool_1.mapPool)(links, 6, async (pageUrl) => {
+              try {
+                return { url: await resolveEhImage(pageUrl) };
+              } catch {
+                return null;
+              }
+            })).filter((page) => !!page);
+            if (!pages.length)
+              throw new Error(`No readable pages for ${url}`);
+            return pages;
+          }
+          case "hitomi":
+            return fetchHitomiPages(id);
+          default:
+            throw new Error(`Unsupported gallery host for ${url}`);
+        }
+      };
+      var pagesForChapterUrl = async (url) => {
+        const listed = (0, chapters_1.decodePagesChapter)(url);
+        if (listed)
+          return listed.map((image) => ({ url: image }));
+        if ((0, sites_1.isRemoteArchiveUrl)(url)) {
+          const bytes = await (0, http_1.fetchBytes)(url, { timeout: 18e4 });
+          return (0, zip_1.extractZipImagePages)(bytes).map((page) => ({ b64: page.b64 }));
+        }
+        const site = (0, sites_1.tryIdentifySite)(url);
+        if (!site) {
+          throw new Error(`Unknown chapter host. Use nhentai, hentairead, hentainexus, hentai2read, pandachaika, ehentai, hitomi, a .cbz/.zip, or a pages list.`);
+        }
+        return pagesForSite(site, url);
+      };
+      exports.pagesForChapterUrl = pagesForChapterUrl;
+      var imageUrlsOf = (pages) => pages.map((page) => page.url).filter((url) => typeof url === "string" && !!url);
+      exports.imageUrlsOf = imageUrlsOf;
+    }
+  });
+
+  // __temp__/sources/r2-library/pages.js
+  var require_pages = __commonJS({
+    "__temp__/sources/r2-library/pages.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.listImageKeys = exports.openArchiveSession = exports.dataUrlForPage = exports.parsePageUrl = exports.pageUrl = exports.PAGE_HOST = void 0;
+      var fflate_1 = require_browser();
+      var crypto_1 = require_crypto();
+      var archive_1 = require_archive();
+      var MAX_ARCHIVE_BYTES = 80 * 1024 * 1024;
+      var MAX_PAGES = 400;
+      var SESSION_TTL_MS = 30 * 60 * 1e3;
+      exports.PAGE_HOST = "https://r2-library.pages";
+      var sessions = /* @__PURE__ */ new Map();
+      var mimeForName = (name) => {
+        const lower = name.toLowerCase();
+        if (lower.endsWith(".png"))
+          return "image/png";
+        if (lower.endsWith(".webp"))
+          return "image/webp";
+        if (lower.endsWith(".gif"))
+          return "image/gif";
+        if (lower.endsWith(".avif"))
+          return "image/avif";
+        if (lower.endsWith(".bmp"))
+          return "image/bmp";
+        return "image/jpeg";
+      };
+      var isImagePath = (name) => {
+        if (!name || name.endsWith("/"))
+          return false;
+        if (name.startsWith("__MACOSX/"))
+          return false;
+        if (name.split("/").some((part) => part.startsWith(".")))
+          return false;
+        return (0, archive_1.isImageName)((0, archive_1.basename)(name));
+      };
+      var pruneSessions = () => {
+        const cutoff = Date.now() - SESSION_TTL_MS;
+        for (const [id, session] of sessions) {
+          if (session.createdAt < cutoff)
+            sessions.delete(id);
+        }
+      };
+      var newSessionId = () => `s${Date.now().toString(36)}${Math.floor(Math.random() * 1e9).toString(36)}`;
+      var pageUrl = (sessionId, index) => `${exports.PAGE_HOST}/${sessionId}/${index}`;
+      exports.pageUrl = pageUrl;
+      var parsePageUrl = (url) => {
+        const match = /^https:\/\/r2-library\.pages\/([^/]+)\/(\d+)(?:\?.*)?$/i.exec(url);
+        if (!match)
+          return null;
+        return { sessionId: match[1], index: Number(match[2]) };
+      };
+      exports.parsePageUrl = parsePageUrl;
+      var dataUrlForPage = (url) => {
+        const parsed = (0, exports.parsePageUrl)(url);
+        if (!parsed)
+          return null;
+        const session = sessions.get(parsed.sessionId);
+        const page = session == null ? void 0 : session.pages[parsed.index];
+        if (!page)
+          return null;
+        return `data:${page.mime};base64,${(0, crypto_1.bytesToBase64)(page.bytes)}`;
+      };
+      exports.dataUrlForPage = dataUrlForPage;
+      var openArchiveSession = (archiveBytes) => {
+        pruneSessions();
+        if (archiveBytes.byteLength > MAX_ARCHIVE_BYTES) {
+          throw new Error(`Chapter archive is too large (${Math.round(archiveBytes.byteLength / (1024 * 1024))} MiB). Keep CBZs under ${MAX_ARCHIVE_BYTES / (1024 * 1024)} MiB, or use a chapter folder of images instead (no size limit).`);
+        }
+        let files;
+        try {
+          files = (0, fflate_1.unzipSync)(archiveBytes, {
+            filter: (file) => isImagePath(file.name)
+          });
+        } catch (error) {
+          throw new Error(`Failed to unzip chapter archive: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        const pages = Object.entries(files).filter(([, data]) => !!(data == null ? void 0 : data.length)).map(([name, data]) => ({
+          name: (0, archive_1.basename)(name),
+          full: name,
+          data
+        })).sort((left, right) => (0, archive_1.naturalCompare)(left.full, right.full)).map(({ name, data }) => ({
+          mime: mimeForName(name),
+          bytes: data
+        }));
+        if (!pages.length) {
+          throw new Error("Archive contained no readable image pages");
+        }
+        if (pages.length > MAX_PAGES) {
+          throw new Error(`Archive has ${pages.length} pages (max ${MAX_PAGES}). Split the CBZ or store images as a chapter folder.`);
+        }
+        const sessionId = newSessionId();
+        sessions.set(sessionId, { createdAt: Date.now(), pages });
+        return {
+          sessionId,
+          urls: pages.map((_, index) => (0, exports.pageUrl)(sessionId, index))
+        };
+      };
+      exports.openArchiveSession = openArchiveSession;
+      var listImageKeys = (objectKeys) => objectKeys.filter((key) => {
+        const name = (0, archive_1.basename)(key);
+        return (0, archive_1.isImageName)(name) && !(0, archive_1.isArchiveName)(name) && !name.startsWith(".");
+      }).sort((left, right) => (0, archive_1.naturalCompare)((0, archive_1.basename)(left), (0, archive_1.basename)(right)));
+      exports.listImageKeys = listImageKeys;
     }
   });
 
@@ -3628,7 +5625,7 @@ var SourcePackage = (() => {
       init_Buffer();
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
-      exports.__assertListXmlForTests = exports.__parseListXmlForTests = exports.presignGet = exports.getObjectText = exports.getObjectBytes = exports.listAll = void 0;
+      exports.__assertListXmlForTests = exports.__parseListXmlForTests = exports.imageUrl = exports.presignGet = exports.getObjectText = exports.getObjectBytes = exports.listAll = void 0;
       var aws4_1 = require_aws4();
       var crypto_1 = require_crypto();
       var client;
@@ -3763,6 +5760,13 @@ var SourcePackage = (() => {
         expiresSeconds
       }).url;
       exports.presignGet = presignGet;
+      var imageUrl = (config, key, expiresSeconds = 60 * 60) => {
+        const base = config.publicBaseUrl.replace(/\/+$/, "");
+        if (base)
+          return `${base}/${key.replace(/^\/+/, "")}`;
+        return (0, exports.presignGet)(config, key, expiresSeconds);
+      };
+      exports.imageUrl = imageUrl;
       exports.__parseListXmlForTests = parseListXml;
       exports.__assertListXmlForTests = assertListXml;
     }
@@ -3777,14 +5781,26 @@ var SourcePackage = (() => {
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.resolveCoverImage = exports.PLACEHOLDER_COVER = void 0;
       var archive_1 = require_archive();
+      var gallery_1 = require_gallery();
+      var pages_1 = require_pages();
       var r2_1 = require_r2();
       var coverCache = /* @__PURE__ */ new Map();
-      exports.PLACEHOLDER_COVER = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAPElEQVR42mNgYGD4z8DAwMgABXAGJAEY6AAjAwMDAyMjI8N/RhD4z8DIyAhlwBRABRkZGf6D5MEKYJJwBTA+AFjpAwB+1Qn6nY5qAAAAAABJRU5ErkJggg==";
+      exports.PLACEHOLDER_COVER = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAPElEQVR42mNgYGD4z8DAwMDAyMjI8N/RhD4z8DIyAhlwBRABRkZGf6D5MEKYJJwBTA+AFjpAwB+1Qn6nY5qAAAAAABJRU5ErkJggg==";
+      var pickImage = (keys, page) => {
+        if (/^\d+$/.test(page))
+          return keys[Number(page) - 1];
+        const target = page.toLowerCase();
+        return keys.find((key) => {
+          var _a, _b;
+          const name = (_b = (_a = key.split("/").pop()) == null ? void 0 : _a.toLowerCase()) != null ? _b : "";
+          return name === target || name.replace(/\.[^.]+$/, "") === target.replace(/\.[^.]+$/, "");
+        });
+      };
       var resolveCoverImage = async (options) => {
-        var _a;
-        const { config, contentId, coverKey, details, archives, allowArchiveExtract = true, fallbackToPlaceholder = false } = options;
+        var _a, _b;
+        const { config, contentId, coverKey, details, archives, folders = [], remotes = [], allowArchiveExtract = true, fallbackToPlaceholder = false } = options;
         if (coverKey) {
-          return (0, r2_1.presignGet)(config, coverKey, 60 * 60);
+          return (0, r2_1.imageUrl)(config, coverKey, 60 * 60);
         }
         const coverValue = (_a = details == null ? void 0 : details.cover) == null ? void 0 : _a.trim();
         if (coverValue) {
@@ -3797,14 +5813,49 @@ var SourcePackage = (() => {
             const cached = coverCache.get(cacheKey);
             if (cached)
               return cached;
-            const archive = (0, archive_1.findArchiveByChapterName)(archives, ref.chapter);
-            if (!archive) {
-              throw new Error(`Cover ref "${coverValue}" points at chapter "${ref.chapter}", but no matching .cbz/.zip was found in ${config.prefix}/${contentId}/`);
+            const folder = folders.find((entry) => (0, archive_1.chapterNameMatches)(entry.name, ref.chapter));
+            if (folder) {
+              const listed = await (0, r2_1.listAll)(config, folder.prefix);
+              const keys = (0, pages_1.listImageKeys)(listed.objects.map((object) => object.key));
+              const key = pickImage(keys, ref.page);
+              if (key) {
+                const url = (0, r2_1.imageUrl)(config, key, 60 * 60);
+                coverCache.set(cacheKey, url);
+                return url;
+              }
             }
-            const bytes = await (0, r2_1.getObjectBytes)(config, archive.key);
-            const dataUrl = (0, archive_1.extractArchivePageDataUrl)(bytes, ref.page);
-            coverCache.set(cacheKey, dataUrl);
-            return dataUrl;
+            const archive = (0, archive_1.findArchiveByChapterName)(archives, ref.chapter);
+            if (archive) {
+              try {
+                const bytes = await (0, r2_1.getObjectBytes)(config, archive.key);
+                const dataUrl = (0, archive_1.extractArchivePageDataUrl)(bytes, ref.page);
+                coverCache.set(cacheKey, dataUrl);
+                return dataUrl;
+              } catch {
+              }
+            }
+            const remote = remotes.find((entry) => (0, archive_1.chapterNameMatches)(entry.name, ref.chapter));
+            if (remote) {
+              try {
+                const pages = await (0, gallery_1.pagesForChapterUrl)(remote.url);
+                const urls = (0, gallery_1.imageUrlsOf)(pages);
+                const picked = (_b = pickImage(urls, ref.page)) != null ? _b : urls[0];
+                if (picked) {
+                  coverCache.set(cacheKey, picked);
+                  return picked;
+                }
+              } catch {
+              }
+            }
+          }
+        }
+        if (allowArchiveExtract && folders[0]) {
+          try {
+            const listed = await (0, r2_1.listAll)(config, folders[0].prefix);
+            const key = (0, pages_1.listImageKeys)(listed.objects.map((object) => object.key))[0];
+            if (key)
+              return (0, r2_1.imageUrl)(config, key, 60 * 60);
+          } catch {
           }
         }
         if (allowArchiveExtract && archives[0]) {
@@ -3814,7 +5865,7 @@ var SourcePackage = (() => {
             return cached;
           try {
             const bytes = await (0, r2_1.getObjectBytes)(config, archives[0].key);
-            for (const guess of ["1.png", "01.png", "001.png", "1.jpg", "01.jpg", "cover.png"]) {
+            for (const guess of ["1", "1.png", "01.png", "001.png", "1.jpg", "01.jpg", "cover.png"]) {
               try {
                 const dataUrl = (0, archive_1.extractArchivePageDataUrl)(bytes, guess);
                 coverCache.set(cacheKey, dataUrl);
@@ -3892,6 +5943,23 @@ var SourcePackage = (() => {
           rating: entry.rating == null ? void 0 : asEnum(RATING, entry.rating, types_1.ContentRating.EVERYONE)
         };
       };
+      var genreTags = (details) => {
+        var _a;
+        const raw = (_a = details.genres) != null ? _a : details.genre;
+        if (!raw)
+          return void 0;
+        const names = (Array.isArray(raw) ? raw : String(raw).split(",")).map((item) => {
+          if (typeof item === "string")
+            return item.trim();
+          if (item && typeof item === "object") {
+            return (item.title || item.name || "").trim();
+          }
+          return "";
+        }).filter(Boolean);
+        if (!names.length)
+          return void 0;
+        return names.map((title) => tagOf({ title }));
+      };
       var contentFromDetails = (details, fallback) => {
         var _a, _b, _c, _d;
         return {
@@ -3900,11 +5968,11 @@ var SourcePackage = (() => {
           bannerImage: details.banner || fallback.bannerImage,
           artworks: details.artworks,
           webUrl: details.webUrl,
-          rating: asEnum(RATING, details.rating, types_1.ContentRating.EVERYONE),
+          rating: asEnum(RATING, details.rating, types_1.ContentRating.MATURE),
           status: asEnum(STATUS, details.status, types_1.ContentStatus.UNKNOWN),
           contentType: asEnum(TYPE, details.contentType, types_1.ContentType.MANGA),
           readingMode: details.readingMode == null ? void 0 : asEnum(MODE, details.readingMode, types_1.ReadingMode.PAGED_MANGA),
-          summary: details.summary,
+          summary: details.summary || details.description,
           additionalTitles: details.additionalTitles,
           additionalDetails: details.additionalDetails,
           statistics: details.statistics ? {
@@ -3913,12 +5981,15 @@ var SourcePackage = (() => {
             bookmarks: details.statistics.bookmarks,
             views: details.statistics.views
           } : void 0,
-          credits: (_a = details.credits) == null ? void 0 : _a.map((credit) => ({
+          credits: (_b = ((_a = details.credits) == null ? void 0 : _a.length) ? details.credits : [
+            details.author ? { name: details.author, role: "author" } : null,
+            details.artist ? { name: details.artist, role: "artist" } : null
+          ].filter((credit) => !!credit)) == null ? void 0 : _b.map((credit) => ({
             name: credit.name,
             role: credit.role,
-            image: credit.image
+            image: "image" in credit ? credit.image : void 0
           })),
-          genres: (_b = details.genres) == null ? void 0 : _b.map(tagOf),
+          genres: genreTags(details),
           properties: (_c = details.properties) == null ? void 0 : _c.map((section, index) => {
             var _a2;
             return {
@@ -3940,122 +6011,14 @@ var SourcePackage = (() => {
       exports.contentFromDetails = contentFromDetails;
       var parseDetailsJson = (raw) => {
         const parsed = JSON.parse(raw);
-        if (!(parsed == null ? void 0 : parsed.title) || typeof parsed.title !== "string") {
-          throw new Error("details.json must include a string title");
+        if (parsed.title != null && typeof parsed.title !== "string") {
+          throw new Error("details.json title must be a string when present");
         }
+        if (parsed.description && !parsed.summary)
+          parsed.summary = parsed.description;
         return parsed;
       };
       exports.parseDetailsJson = parseDetailsJson;
-    }
-  });
-
-  // __temp__/sources/r2-library/pages.js
-  var require_pages = __commonJS({
-    "__temp__/sources/r2-library/pages.js"(exports) {
-      "use strict";
-      init_Buffer();
-      init_process();
-      Object.defineProperty(exports, "__esModule", { value: true });
-      exports.listImageKeys = exports.openArchiveSession = exports.dataUrlForPage = exports.parsePageUrl = exports.pageUrl = exports.PAGE_HOST = void 0;
-      var fflate_1 = require_browser();
-      var crypto_1 = require_crypto();
-      var archive_1 = require_archive();
-      var MAX_ARCHIVE_BYTES = 80 * 1024 * 1024;
-      var MAX_PAGES = 400;
-      var SESSION_TTL_MS = 30 * 60 * 1e3;
-      exports.PAGE_HOST = "https://r2-library.pages";
-      var sessions = /* @__PURE__ */ new Map();
-      var mimeForName = (name) => {
-        const lower = name.toLowerCase();
-        if (lower.endsWith(".png"))
-          return "image/png";
-        if (lower.endsWith(".webp"))
-          return "image/webp";
-        if (lower.endsWith(".gif"))
-          return "image/gif";
-        if (lower.endsWith(".avif"))
-          return "image/avif";
-        if (lower.endsWith(".bmp"))
-          return "image/bmp";
-        return "image/jpeg";
-      };
-      var isImagePath = (name) => {
-        if (!name || name.endsWith("/"))
-          return false;
-        if (name.startsWith("__MACOSX/"))
-          return false;
-        if (name.split("/").some((part) => part.startsWith(".")))
-          return false;
-        return (0, archive_1.isImageName)((0, archive_1.basename)(name));
-      };
-      var pruneSessions = () => {
-        const cutoff = Date.now() - SESSION_TTL_MS;
-        for (const [id, session] of sessions) {
-          if (session.createdAt < cutoff)
-            sessions.delete(id);
-        }
-      };
-      var newSessionId = () => `s${Date.now().toString(36)}${Math.floor(Math.random() * 1e9).toString(36)}`;
-      var pageUrl = (sessionId, index) => `${exports.PAGE_HOST}/${sessionId}/${index}`;
-      exports.pageUrl = pageUrl;
-      var parsePageUrl = (url) => {
-        const match = /^https:\/\/r2-library\.pages\/([^/]+)\/(\d+)(?:\?.*)?$/i.exec(url);
-        if (!match)
-          return null;
-        return { sessionId: match[1], index: Number(match[2]) };
-      };
-      exports.parsePageUrl = parsePageUrl;
-      var dataUrlForPage = (url) => {
-        const parsed = (0, exports.parsePageUrl)(url);
-        if (!parsed)
-          return null;
-        const session = sessions.get(parsed.sessionId);
-        const page = session == null ? void 0 : session.pages[parsed.index];
-        if (!page)
-          return null;
-        return `data:${page.mime};base64,${(0, crypto_1.bytesToBase64)(page.bytes)}`;
-      };
-      exports.dataUrlForPage = dataUrlForPage;
-      var openArchiveSession = (archiveBytes) => {
-        pruneSessions();
-        if (archiveBytes.byteLength > MAX_ARCHIVE_BYTES) {
-          throw new Error(`Chapter archive is too large (${Math.round(archiveBytes.byteLength / (1024 * 1024))} MiB). Keep CBZs under ${MAX_ARCHIVE_BYTES / (1024 * 1024)} MiB, or use a chapter folder of images instead (no size limit).`);
-        }
-        let files;
-        try {
-          files = (0, fflate_1.unzipSync)(archiveBytes, {
-            filter: (file) => isImagePath(file.name)
-          });
-        } catch (error) {
-          throw new Error(`Failed to unzip chapter archive: ${error instanceof Error ? error.message : String(error)}`);
-        }
-        const pages = Object.entries(files).filter(([, data]) => !!(data == null ? void 0 : data.length)).map(([name, data]) => ({
-          name: (0, archive_1.basename)(name),
-          full: name,
-          data
-        })).sort((left, right) => (0, archive_1.naturalCompare)(left.full, right.full)).map(({ name, data }) => ({
-          mime: mimeForName(name),
-          bytes: data
-        }));
-        if (!pages.length) {
-          throw new Error("Archive contained no readable image pages");
-        }
-        if (pages.length > MAX_PAGES) {
-          throw new Error(`Archive has ${pages.length} pages (max ${MAX_PAGES}). Split the CBZ or store images as a chapter folder.`);
-        }
-        const sessionId = newSessionId();
-        sessions.set(sessionId, { createdAt: Date.now(), pages });
-        return {
-          sessionId,
-          urls: pages.map((_, index) => (0, exports.pageUrl)(sessionId, index))
-        };
-      };
-      exports.openArchiveSession = openArchiveSession;
-      var listImageKeys = (objectKeys) => objectKeys.filter((key) => {
-        const name = (0, archive_1.basename)(key);
-        return (0, archive_1.isImageName)(name) && !(0, archive_1.isArchiveName)(name) && !name.startsWith(".");
-      }).sort((left, right) => (0, archive_1.naturalCompare)((0, archive_1.basename)(left), (0, archive_1.basename)(right)));
-      exports.listImageKeys = listImageKeys;
     }
   });
 
@@ -4069,16 +6032,25 @@ var SourcePackage = (() => {
       Object.defineProperty(exports, "__esModule", { value: true });
       var types_1 = require_types();
       var archive_1 = require_archive();
+      var chapters_1 = require_chapters();
       var config_1 = require_config();
       var cover_1 = require_cover();
       var details_1 = require_details();
+      var gallery_1 = require_gallery();
       var pages_1 = require_pages();
       var r2_1 = require_r2();
+      var sites_1 = require_sites();
+      var http_1 = require_http2();
       var encodeChapterId = (chapter) => {
         if (chapter.kind === "zip")
           return `zip:${encodeURIComponent(chapter.key)}`;
         if (chapter.kind === "dir")
           return `dir:${encodeURIComponent(chapter.prefix)}`;
+        if (chapter.kind === "url")
+          return `url:${encodeURIComponent(chapter.url)}`;
+        if (chapter.kind === "pages") {
+          return `pages:${encodeURIComponent(JSON.stringify(chapter.urls))}`;
+        }
         return `loose:${encodeURIComponent(chapter.prefix)}`;
       };
       var decodeChapterId = (chapterId) => {
@@ -4090,6 +6062,12 @@ var SourcePackage = (() => {
         }
         if (chapterId.startsWith("loose:")) {
           return { kind: "loose", value: decodeURIComponent(chapterId.slice(6)) };
+        }
+        if (chapterId.startsWith("url:")) {
+          return { kind: "url", value: decodeURIComponent(chapterId.slice(4)) };
+        }
+        if (chapterId.startsWith("pages:")) {
+          return { kind: "pages", value: decodeURIComponent(chapterId.slice(6)) };
         }
         return { kind: "zip", value: decodeURIComponent(chapterId) };
       };
@@ -4111,11 +6089,11 @@ var SourcePackage = (() => {
             allowArchiveExtract: false,
             fallbackToPlaceholder: true
           }),
-          rating: types_1.ContentRating.EVERYONE
+          rating: types_1.ContentRating.MATURE
         };
       };
       var buildEntries = async (config, folderPrefixes, root) => {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         const entries = [];
         const rootId = root.replace(/\/+$/, "");
         for (const prefix of folderPrefixes) {
@@ -4125,6 +6103,7 @@ var SourcePackage = (() => {
           const listed = await (0, r2_1.listAll)(config, prefix, "/");
           const coverKey = (_a = listed.objects.find((object) => (0, archive_1.isCoverName)((0, archive_1.basename)(object.key)))) == null ? void 0 : _a.key;
           const detailsKey = (_b = listed.objects.find((object) => (0, archive_1.isDetailsName)((0, archive_1.basename)(object.key)))) == null ? void 0 : _b.key;
+          const chaptersJsonKey = (_c = listed.objects.find((object) => (0, archive_1.isChaptersFileName)((0, archive_1.basename)(object.key)))) == null ? void 0 : _c.key;
           const archives = listed.objects.filter((object) => (0, archive_1.isArchiveName)((0, archive_1.basename)(object.key))).map((object) => ({
             key: object.key,
             name: (0, archive_1.basename)(object.key)
@@ -4165,14 +6144,15 @@ var SourcePackage = (() => {
             });
           }
           chapters.sort((left, right) => (0, archive_1.naturalCompare)(left.name, right.name));
-          const inferredCover = coverKey != null ? coverKey : (_c = looseImages.sort((a, b) => (0, archive_1.naturalCompare)((0, archive_1.basename)(a.key), (0, archive_1.basename)(b.key)))[0]) == null ? void 0 : _c.key;
-          if (!chapters.length && !detailsKey && !inferredCover)
+          const inferredCover = coverKey != null ? coverKey : (_d = looseImages.sort((a, b) => (0, archive_1.naturalCompare)((0, archive_1.basename)(a.key), (0, archive_1.basename)(b.key)))[0]) == null ? void 0 : _d.key;
+          if (!chapters.length && !detailsKey && !chaptersJsonKey && !inferredCover)
             continue;
           entries.push({
             id,
             prefix,
             coverKey: inferredCover,
             detailsKey,
+            chaptersJsonKey,
             archives,
             chapters
           });
@@ -4221,24 +6201,97 @@ var SourcePackage = (() => {
         }
         return entry;
       };
+      var jsonChapterToRef = (chapter, seriesPrefix) => {
+        const url = chapter.url;
+        const name = chapter.title;
+        const listed = (0, chapters_1.decodePagesChapter)(url);
+        if (listed)
+          return { kind: "pages", urls: listed, name };
+        if ((0, chapters_1.isFolderChapter)(url)) {
+          return {
+            kind: "dir",
+            prefix: url.endsWith("/") ? url : `${url}/`,
+            name
+          };
+        }
+        if ((0, chapters_1.isBucketArchive)(url))
+          return { kind: "zip", key: url, name };
+        if ((0, sites_1.isAbsoluteHttpUrl)(url) || url.startsWith("pages:")) {
+          return { kind: "url", url, name };
+        }
+        const prefix = seriesPrefix.replace(/\/+$/, "");
+        const resolved = url.startsWith(prefix) || !prefix ? url : `${prefix}/${url.replace(/^\/+/, "")}`;
+        if ((0, archive_1.isArchiveName)((0, archive_1.basename)(resolved)))
+          return { kind: "zip", key: resolved, name };
+        if (resolved.endsWith("/"))
+          return { kind: "dir", prefix: resolved, name };
+        return { kind: "url", url: resolved, name };
+      };
+      var loadJsonChapters = async (config, entry) => {
+        const parsed = [];
+        if (entry.detailsKey) {
+          try {
+            parsed.push(...(0, chapters_1.parseChaptersJson)(await (0, r2_1.getObjectText)(config, entry.detailsKey), entry.prefix));
+          } catch (error) {
+            console.log(`Failed to parse details.json chapters for ${entry.id}: ${String(error)}`);
+          }
+        }
+        if (entry.chaptersJsonKey) {
+          try {
+            parsed.push(...(0, chapters_1.parseChaptersJson)(await (0, r2_1.getObjectText)(config, entry.chaptersJsonKey), entry.prefix));
+          } catch (error) {
+            console.log(`Failed to parse chapters.json for ${entry.id}: ${String(error)}`);
+          }
+        }
+        return parsed.map((chapter) => jsonChapterToRef(chapter, entry.prefix));
+      };
+      var chapterFingerprint = (chapter) => {
+        if (chapter.kind === "zip")
+          return `zip:${chapter.key}`;
+        if (chapter.kind === "dir")
+          return `dir:${chapter.prefix}`;
+        if (chapter.kind === "loose")
+          return `loose:${chapter.prefix}`;
+        if (chapter.kind === "url")
+          return `url:${chapter.url}`;
+        return `pages:${chapter.urls.join("|")}`;
+      };
+      var mergedChapters = async (config, entry) => {
+        const extra = await loadJsonChapters(config, entry);
+        const seen = /* @__PURE__ */ new Set();
+        const merged = [];
+        for (const chapter of [...entry.chapters, ...extra]) {
+          const key = chapterFingerprint(chapter);
+          if (seen.has(key))
+            continue;
+          seen.add(key);
+          merged.push(chapter);
+        }
+        merged.sort((left, right) => {
+          const delta = (0, archive_1.parseChapterNumber)(left.name, 0) - (0, archive_1.parseChapterNumber)(right.name, 0);
+          return delta !== 0 ? delta : (0, archive_1.naturalCompare)(left.name, right.name);
+        });
+        return merged;
+      };
       var Target = class {
         constructor() {
           __publicField(this, "getConfiguration", () => ({
             endpoint: ["anilist", "mal"]
           }));
           __publicField(this, "getSettingsPage", async () => {
-            var _a, _b, _c, _d, _e;
+            var _a, _b, _c, _d, _e, _f;
             const accountId = (_a = await ObjectStore.string(config_1.SETTINGS.accountId)) != null ? _a : "";
             const accessKeyId = (_b = await ObjectStore.string(config_1.SETTINGS.accessKeyId)) != null ? _b : "";
             const bucket = (_c = await ObjectStore.string(config_1.SETTINGS.bucket)) != null ? _c : "";
             const endpoint = (_d = await ObjectStore.string(config_1.SETTINGS.endpoint)) != null ? _d : "";
             const prefix = (_e = await ObjectStore.string(config_1.SETTINGS.prefix)) != null ? _e : "";
+            const publicBaseUrl = (_f = await ObjectStore.string(config_1.SETTINGS.publicBaseUrl)) != null ? _f : "";
             const hasSecret = !!await ObjectStore.string(config_1.SETTINGS.secretAccessKey);
             return {
               sections: [
                 {
                   header: "Cloudflare R2",
-                  footer: "Object Read API token required. Leave Endpoint blank for the default R2 S3 URL. Leave Root Prefix empty when title folders sit at the bucket root. Chapters can be .cbz/.zip OR folders of images (preferred for large chapters).",
+                  footer: "Object Read API token required. Leave Endpoint blank for the default R2 S3 URL. Leave Root Prefix empty when title folders sit at the bucket root. Mix folder/.cbz chapters with gallery URLs in details.json chapters[].",
                   views: [
                     (0, types_1.UITextField)({
                       id: config_1.SETTINGS.accountId,
@@ -4274,6 +6327,12 @@ var SourcePackage = (() => {
                       title: "Root Prefix",
                       currentValue: prefix,
                       placeholder: "(empty = bucket root)"
+                    }),
+                    (0, types_1.UITextField)({
+                      id: config_1.SETTINGS.publicBaseUrl,
+                      title: "Public image URL (optional)",
+                      currentValue: publicBaseUrl,
+                      placeholder: "https://pub-\u2026.r2.dev"
                     })
                   ]
                 }
@@ -4349,12 +6408,15 @@ var SourcePackage = (() => {
                 coverKey = (0, pages_1.listImageKeys)(listed.objects.map((object) => object.key))[0];
               }
             }
+            const chapters = await mergedChapters(config, entry);
             const coverImage = await (0, cover_1.resolveCoverImage)({
               config,
               contentId,
               coverKey,
               details,
               archives: entry.archives,
+              folders: chapters.filter((chapter) => chapter.kind === "dir").map((chapter) => ({ prefix: chapter.prefix, name: chapter.name })),
+              remotes: chapters.filter((chapter) => chapter.kind === "url").map((chapter) => ({ url: chapter.url, name: chapter.name })),
               allowArchiveExtract: true,
               fallbackToPlaceholder: true
             });
@@ -4367,7 +6429,7 @@ var SourcePackage = (() => {
             return {
               title: contentId,
               coverImage,
-              rating: types_1.ContentRating.EVERYONE,
+              rating: types_1.ContentRating.MATURE,
               status: types_1.ContentStatus.UNKNOWN,
               contentType: types_1.ContentType.MANGA,
               summary: `Imported from R2 folder ${contentId}/`,
@@ -4380,7 +6442,8 @@ var SourcePackage = (() => {
           __publicField(this, "getChapters", async (contentId) => {
             const config = await (0, config_1.loadConfig)();
             const entry = await findEntry(config, contentId);
-            return entry.chapters.map((chapter, index) => ({
+            const chapters = await mergedChapters(config, entry);
+            return chapters.map((chapter, index) => ({
               id: encodeChapterId(chapter),
               index,
               number: (0, archive_1.parseChapterNumber)(chapter.name, index + 1),
@@ -4403,35 +6466,57 @@ var SourcePackage = (() => {
                 throw new Error(`No images found under ${prefix}`);
               }
               return keys.map((key) => ({
-                url: (0, r2_1.presignGet)(config, key, 60 * 60 * 6)
+                url: (0, r2_1.imageUrl)(config, key, 60 * 60 * 6)
               }));
+            }
+            if (decoded.kind === "pages") {
+              const urls2 = JSON.parse(decoded.value);
+              if (!Array.isArray(urls2))
+                throw new Error("Invalid pages chapter");
+              return urls2.filter((entry) => typeof entry === "string" && !!entry).map((url) => ({ url }));
+            }
+            if (decoded.kind === "url") {
+              if ((0, sites_1.isRemoteArchiveUrl)(decoded.value)) {
+                const bytes2 = await (0, http_1.fetchBytes)(decoded.value, { timeout: 18e4 });
+                const { urls: urls2 } = (0, pages_1.openArchiveSession)(bytes2);
+                return urls2.map((url) => ({ url }));
+              }
+              return (0, gallery_1.pagesForChapterUrl)(decoded.value);
             }
             const bytes = await (0, r2_1.getObjectBytes)(config, decoded.value);
             const { urls } = (0, pages_1.openArchiveSession)(bytes);
             return urls.map((url) => ({ url }));
           });
           /**
-           * Resolve session page URLs to data: URIs so Nuke never hits a fake host.
-           * Presigned R2 URLs pass through unchanged.
+           * Session zip pages → data URLs. Gallery CDNs get a Referer so CF/hotlink
+           * checks match chapter reads.
            */
           __publicField(this, "willRequestImage", async (request) => {
+            var _a;
             const url = typeof request === "string" ? request : request.url;
             const dataUrl = (0, pages_1.dataUrlForPage)(url);
-            if (!dataUrl) {
+            if (dataUrl) {
+              return typeof request === "string" ? { url: dataUrl } : { ...request, url: dataUrl };
+            }
+            const referer = (0, sites_1.refererForImage)(url);
+            if (!referer) {
               return typeof request === "string" ? { url: request } : request;
             }
-            return typeof request === "string" ? { url: dataUrl } : { ...request, url: dataUrl };
+            const headers = typeof request === "string" ? {} : { ...(_a = request.headers) != null ? _a : {} };
+            if (!headers.Referer && !headers.referer)
+              headers.Referer = referer;
+            return typeof request === "string" ? { url, headers } : { ...request, url, headers };
           });
         }
       };
       __publicField(Target, "info", {
         id: "en.r2-library",
         name: "R2 Library",
-        version: 1.6,
+        version: 1.7,
         website: "https://developers.cloudflare.com/r2/",
         thumbnail: "r2-library.png",
         languages: ["en"],
-        rating: types_1.ContentRating.EVERYONE
+        rating: types_1.ContentRating.MATURE
       });
       exports.default = Target;
     }
@@ -4445,7 +6530,7 @@ var SourcePackage = (() => {
       var runtime = require_runtime();
       var sourceModule = require_r2_library();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.6, "website": "https://developers.cloudflare.com/r2/", "thumbnail": "r2-library.png", "languages": ["en"], "rating": 0 };
+      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.7, "website": "https://developers.cloudflare.com/r2/", "thumbnail": "r2-library.png", "languages": ["en"], "rating": 2 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

@@ -405,14 +405,29 @@ class R2Merge(
         return chaptersJsonCoverPage(config, seriesPrefix, listing, ref)
     }
 
+    private fun jsonListedChapters(
+        config: R2Config,
+        listing: S3Listing,
+        seriesPrefix: String,
+    ): List<ParsedChapter> {
+        val direct = listing.objects.filter { it.key.isChildOf(seriesPrefix) }
+        val chapters = mutableListOf<ParsedChapter>()
+        direct.firstOrNull { it.key.fileName().equals("details.json", true) }?.let { obj ->
+            fetchText(config, obj)?.let { chapters += parseChaptersJson(it, json, seriesPrefix) }
+        }
+        direct.firstOrNull { isChaptersJson(it.key) }?.let { obj ->
+            fetchText(config, obj)?.let { chapters += parseChaptersJson(it, json, seriesPrefix) }
+        }
+        return chapters
+    }
+
     private fun chaptersJsonCoverPage(
         config: R2Config,
         seriesPrefix: String,
         listing: S3Listing,
         ref: CoverPageRef,
     ): String? {
-        val obj = listing.objects.firstOrNull { isChaptersJson(it.key) } ?: return null
-        val chapters = fetchText(config, obj)?.let { parseChaptersJson(it, json, seriesPrefix) }.orEmpty()
+        val chapters = jsonListedChapters(config, listing, seriesPrefix)
         val chapter = findChapterByName(chapters, ref.chapter) { it.title } ?: return null
         val pages = pagesForCover(chapter.url)
         val imageUrl = pickCoverPage(pages, ref.page, preserveOrder = true) { it.imageUrl.orEmpty() }
@@ -476,14 +491,14 @@ class R2Merge(
         val looseImages = mutableListOf<S3Object>()
         var unsupported = 0
         var chaptersJson: S3Object? = null
+        var detailsJson: S3Object? = null
 
         for (obj in tree.objects) {
             if (isHiddenKey(obj.key)) continue
             val name = obj.key.fileName()
             when {
-                name.equals("chapters.json", true) ||
-                    name.equals("chapter-list.json", true) ||
-                    name.equals("chapter_list.json", true) -> chaptersJson = obj
+                name.equals("details.json", true) && obj.key.isChildOf(prefix) -> detailsJson = obj
+                isChaptersJson(obj.key) && obj.key.isChildOf(prefix) -> chaptersJson = obj
                 isArchiveKey(obj.key) -> archiveObjects += obj
                 isUnsupportedArchiveKey(obj.key) -> unsupported++
                 !isImageKey(obj.key) -> Unit
@@ -527,14 +542,16 @@ class R2Merge(
             )
         }
 
-        if (chaptersJson != null) {
-            fetchText(config, chaptersJson)?.let { text ->
-                chapters += parseChaptersJson(text, json, prefix)
-            }
-        }
+        chapters += jsonListedChapters(config, tree, prefix)
 
         if (chapters.isEmpty()) {
-            throw IOException(emptySeriesMessage(seriesName, unsupported, chaptersJson != null))
+            throw IOException(
+                emptySeriesMessage(
+                    seriesName,
+                    unsupported,
+                    detailsJson != null || chaptersJson != null,
+                ),
+            )
         }
 
         chapters
@@ -906,14 +923,14 @@ class R2Merge(
 
     private fun emptySeriesMessage(seriesName: String, unsupported: Int, hasChapterList: Boolean): String = when {
         hasChapterList ->
-            "\"$seriesName\" has a chapters.json but no readable chapters. " +
+            "\"$seriesName\" has details.json/chapters.json but no readable chapters. " +
                 "Each entry needs a url (gallery or .cbz), id+source, or pages array."
         unsupported > 0 ->
             "\"$seriesName\" only contains archive formats this source cannot open " +
                 "($unsupported file(s)). Convert them to .cbz, or upload loose images."
         else ->
             "No chapters found in \"$seriesName\". Expected chapter folders, .cbz files, " +
-                "or a chapters.json with gallery URLs / remote archives / page lists."
+                "or a details.json / chapters.json with gallery URLs / remote archives / page lists."
     }
 
     override fun popularMangaRequest(page: Int) = throw UnsupportedOperationException()

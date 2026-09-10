@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0b0d" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%237c5cff'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='36' fill='white' font-family='sans-serif'%3ER%3C/text%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --bg: #0b0b0d;
+      --card: #141418;
+      --card-2: #1c1c22;
+      --line: #2a2a32;
+      --text: #f4f4f5;
+      --muted: #8e8e96;
+      --accent: #7c5cff;
+      --accent-2: #9b87ff;
+      --good: #30d158;
+      --danger: #ff453a;
+      --blue: #0a84ff;
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); }
+    body {
+      font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      padding: 20px 16px calc(140px + env(safe-area-inset-bottom));
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 1.55rem; letter-spacing: -0.03em; margin: 8px 0 4px; }
+    .sub { color: var(--muted); font-size: 0.92rem; margin-bottom: 22px; }
+    .sub code { color: var(--accent-2); }
+    section {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    section h2 {
+      margin: 0 0 14px;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin: 10px 0 6px; }
+    input, textarea, select {
+      width: 100%;
+      background: var(--card-2);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font: inherit;
+      outline: none;
+    }
+    textarea { min-height: 88px; resize: vertical; }
+    input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 520px) {
+      .row { grid-template-columns: 1fr; }
+    }
+    .hint { color: var(--muted); font-size: 0.78rem; margin-top: 6px; }
+    .cover-row { display: flex; gap: 8px; }
+    .cover-row input { flex: 1; }
+    button {
+      font: inherit;
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 14px;
+      cursor: pointer;
+    }
+    .ghost {
+      background: var(--card-2);
+      color: var(--text);
+      border: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    .chapter {
+      background: var(--card-2);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .chapter-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .idx {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: #2a2344;
+      color: var(--accent-2);
+      display: grid;
+      place-items: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+      flex: none;
+    }
+    .chapter .grow { flex: 1; }
+    .icon-btn {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      flex: none;
+    }
+    .icon-btn.danger { color: var(--danger); }
+    .add-row { display: flex; gap: 8px; margin-top: 4px; }
+    .add-row button { flex: 1; }
+    .add { background: #241e3a; color: var(--accent-2); }
+    pre {
+      margin: 0;
+      background: #0e0e12;
+      border-radius: 12px;
+      padding: 12px;
+      overflow: auto;
+      font-size: 0.78rem;
+      color: #c4c4ce;
+      max-height: 240px;
+    }
+    .bar {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      background: rgba(11, 11, 13, 0.92);
+      backdrop-filter: blur(16px);
+      border-top: 1px solid var(--line);
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    }
+    .bar-inner {
+      max-width: 720px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .primary { background: var(--accent); color: white; font-weight: 650; }
+    .secondary { background: var(--blue); color: white; font-weight: 650; }
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(92px + env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      background: #222;
+      color: white;
+      padding: 10px 14px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s;
+      z-index: 5;
+    }
+    .toast.show { opacity: 1; }
+    dialog {
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--text);
+      border-radius: 18px;
+      width: min(520px, calc(100vw - 32px));
+      padding: 18px;
+    }
+    dialog::backdrop { background: rgba(0,0,0,.55); }
+    dialog h3 { margin: 0 0 10px; }
+    dialog menu { display: flex; gap: 8px; padding: 0; margin: 12px 0 0; }
+    dialog menu button { flex: 1; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  </style>
+</head>
+<body>
+  <h1>R2 Library JSON</h1>
+  <p class="sub">One <code>details.json</code> with a chapters array. Drop it in the series folder. Split files still work.</p>
+
+  <div class="toolbar">
+    <button class="ghost" type="button" id="importBtn">Import JSON</button>
+    <button class="ghost" type="button" id="clearBtn">Clear</button>
+    <input id="fileInput" type="file" accept="application/json,.json" hidden multiple />
+  </div>
+
+  <section>
+    <h2>Series</h2>
+    <label for="title">Title</label>
+    <input id="title" placeholder="Kinjo Yuuwaku…" />
+    <div class="row">
+      <div>
+        <label for="author">Author</label>
+        <input id="author" placeholder="Hyji" />
+      </div>
+      <div>
+        <label for="artist">Artist</label>
+        <input id="artist" placeholder="Hyji" />
+      </div>
+    </div>
+    <label for="description">Description</label>
+    <textarea id="description" placeholder="Optional"></textarea>
+    <label for="genre">Genre</label>
+    <input id="genre" placeholder="Netorare, Milf  — comma separated" />
+    <div class="row">
+      <div>
+        <label for="status">Status</label>
+        <select id="status">
+          <option value="ongoing">Ongoing</option>
+          <option value="completed">Completed</option>
+          <option value="hiatus">Hiatus</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="unknown">Unknown</option>
+        </select>
+      </div>
+      <div>
+        <label for="cover">Cover</label>
+        <div class="cover-row">
+          <input id="cover" placeholder='Chapter 1_1 or https://…' />
+        </div>
+      </div>
+    </div>
+    <p class="hint">Cover: <code>Chapter 1_1</code> = first page of the chapter titled Chapter 1. Or a direct image URL.</p>
+    <button class="ghost" type="button" id="coverFromFirst" style="margin-top:8px">Use first page of Chapter 1</button>
+  </section>
+
+  <section>
+    <h2>Chapters</h2>
+    <div id="chapters"></div>
+    <div class="add-row">
+      <button class="add" type="button" id="addBtn">+ Chapter</button>
+      <button class="ghost" type="button" id="pasteBtn">Paste links</button>
+    </div>
+    <p class="hint">Blank name becomes <code>Chapter 1</code>, <code>Chapter 2</code>, … Folder/cbz chapters already in R2 are picked up automatically — only add gallery / extra URLs here.</p>
+  </section>
+
+  <section>
+    <h2>Preview</h2>
+    <pre id="preview"></pre>
+  </section>
+
+  <div class="bar">
+    <div class="bar-inner">
+      <button class="primary" type="button" id="shareCombined">Share details.json</button>
+      <button class="secondary" type="button" id="shareSplit">Share two files</button>
+    </div>
+  </div>
+
+  <dialog id="pasteDialog">
+    <h3>Paste links</h3>
+    <p class="hint" style="margin-top:0">One URL per line. Names default to Chapter N.</p>
+    <textarea id="pasteArea" placeholder="https://hentairead.com/hentai/…"></textarea>
+    <menu>
+      <button class="ghost" type="button" id="pasteCancel">Cancel</button>
+      <button class="primary" type="button" id="pasteApply">Add</button>
+    </menu>
+  </dialog>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const STORAGE = "r2-library-json-builder";
+
+    const fields = {
+      title: $("title"),
+      author: $("author"),
+      artist: $("artist"),
+      description: $("description"),
+      genre: $("genre"),
+      status: $("status"),
+      cover: $("cover"),
+    };
+
+    let chapters = [{ url: "", title: "" }];
+
+    const defaultTitle = (i) => `Chapter ${i + 1}`;
+
+    const readForm = () => ({
+      title: fields.title.value.trim(),
+      author: fields.author.value.trim(),
+      artist: fields.artist.value.trim(),
+      description: fields.description.value.trim(),
+      genre: fields.genre.value.split(",").map((s) => s.trim()).filter(Boolean),
+      status: fields.status.value,
+      cover: fields.cover.value.trim(),
+      chapters: chapters.map((ch, i) => ({
+        title: ch.title.trim() || defaultTitle(i),
+        number: i + 1,
+        url: ch.url.trim(),
+      })).filter((ch) => ch.url),
+    });
+
+    const buildDetails = (split = false) => {
+      const data = readForm();
+      const details = {};
+      if (data.title) details.title = data.title;
+      if (data.author) details.author = data.author;
+      if (data.artist) details.artist = data.artist;
+      if (data.description) details.description = data.description;
+      if (data.genre.length) details.genre = data.genre;
+      if (data.status && data.status !== "unknown") details.status = data.status;
+      if (data.cover) details.cover = data.cover;
+      if (!split) details.chapters = data.chapters;
+      return details;
+    };
+
+    const buildChaptersFile = () => ({ chapters: readForm().chapters });
+
+    const jsonText = (obj) => `${JSON.stringify(obj, null, 2)}\n`;
+
+    const renderChapters = () => {
+      $("chapters").innerHTML = chapters.map((ch, i) => `
+        <div class="chapter" data-i="${i}">
+          <div class="chapter-head">
+            <div class="idx">${i + 1}</div>
+            <input class="grow ch-url" data-i="${i}" placeholder="https://nhentai.net/g/…  or  Chapter 001.cbz" value="${escapeAttr(ch.url)}" />
+            <button class="icon-btn" type="button" data-up="${i}" ${i === 0 ? "disabled" : ""}>↑</button>
+            <button class="icon-btn" type="button" data-down="${i}" ${i === chapters.length - 1 ? "disabled" : ""}>↓</button>
+            <button class="icon-btn danger" type="button" data-del="${i}">✕</button>
+          </div>
+          <input class="ch-title" data-i="${i}" placeholder="${defaultTitle(i)} (optional name)" value="${escapeAttr(ch.title)}" />
+        </div>
+      `).join("");
+      updatePreview();
+      saveLocal();
+    };
+
+    const escapeAttr = (value) => String(value || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("<", "&lt;");
+
+    const updatePreview = () => {
+      $("preview").textContent = jsonText(buildDetails(false));
+    };
+
+    const toast = (msg) => {
+      const el = $("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => el.classList.remove("show"), 2200);
+    };
+
+    const saveLocal = () => {
+      localStorage.setItem(STORAGE, JSON.stringify({
+        ...Object.fromEntries(Object.entries(fields).map(([k, el]) => [k, el.value])),
+        chapters,
+      }));
+    };
+
+    const loadLocal = () => {
+      try {
+        const raw = JSON.parse(localStorage.getItem(STORAGE) || "null");
+        if (!raw) return;
+        Object.entries(fields).forEach(([k, el]) => {
+          if (raw[k] != null) el.value = raw[k];
+        });
+        if (Array.isArray(raw.chapters) && raw.chapters.length) chapters = raw.chapters;
+      } catch { /* ignore */ }
+    };
+
+    const toFile = (name, obj) => new File([jsonText(obj)], name, { type: "application/json" });
+
+    const download = (file) => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(file);
+      a.download = file.name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+
+    const shareOrDownload = async (files) => {
+      try {
+        if (navigator.canShare?.({ files })) {
+          await navigator.share({ files, title: "R2 Library JSON" });
+          toast("Shared");
+          return;
+        }
+      } catch (err) {
+        if (err?.name === "AbortError") return;
+      }
+      files.forEach(download);
+      toast(files.length === 1 ? "Downloaded details.json" : "Downloaded both files");
+    };
+
+    const genreFrom = (value) => {
+      if (!value) return "";
+      if (typeof value === "string") return value;
+      if (!Array.isArray(value)) return "";
+      return value.map((item) => {
+        if (typeof item === "string") return item;
+        return item?.title || item?.name || "";
+      }).filter(Boolean).join(", ");
+    };
+
+    const importObject = (obj) => {
+      if (!obj || typeof obj !== "object") return;
+      if (obj.title) fields.title.value = obj.title;
+      if (obj.author) fields.author.value = obj.author;
+      if (obj.artist) fields.artist.value = obj.artist;
+      if (obj.description || obj.summary) fields.description.value = obj.description || obj.summary;
+      const g = genreFrom(obj.genre) || genreFrom(obj.genres);
+      if (g) fields.genre.value = g;
+      if (obj.status) fields.status.value = String(obj.status).toLowerCase();
+      if (obj.cover) fields.cover.value = obj.cover;
+      const list = Array.isArray(obj) ? obj : (obj.chapters || obj.chapter_list);
+      if (Array.isArray(list) && list.length) {
+        chapters = list.map((entry) => {
+          if (typeof entry === "string") return { url: entry, title: "" };
+          return {
+            url: entry.url || entry.href || entry.link || entry.archive || "",
+            title: entry.title || entry.name || "",
+          };
+        });
+      }
+    };
+
+    $("chapters").addEventListener("input", (e) => {
+      const i = Number(e.target.dataset.i);
+      if (Number.isNaN(i)) return;
+      if (e.target.classList.contains("ch-url")) chapters[i].url = e.target.value;
+      if (e.target.classList.contains("ch-title")) chapters[i].title = e.target.value;
+      updatePreview();
+      saveLocal();
+    });
+
+    $("chapters").addEventListener("click", (e) => {
+      const del = e.target.dataset.del;
+      const up = e.target.dataset.up;
+      const down = e.target.dataset.down;
+      if (del != null) {
+        if (chapters.length === 1) {
+          chapters = [{ url: "", title: "" }];
+        } else {
+          chapters.splice(Number(del), 1);
+        }
+        renderChapters();
+      }
+      if (up != null) {
+        const i = Number(up);
+        [chapters[i - 1], chapters[i]] = [chapters[i], chapters[i - 1]];
+        renderChapters();
+      }
+      if (down != null) {
+        const i = Number(down);
+        [chapters[i + 1], chapters[i]] = [chapters[i], chapters[i + 1]];
+        renderChapters();
+      }
+    });
+
+    Object.values(fields).forEach((el) => {
+      el.addEventListener("input", () => { updatePreview(); saveLocal(); });
+    });
+
+    $("addBtn").addEventListener("click", () => {
+      chapters.push({ url: "", title: "" });
+      renderChapters();
+    });
+
+    $("pasteBtn").addEventListener("click", () => $("pasteDialog").showModal());
+    $("pasteCancel").addEventListener("click", () => $("pasteDialog").close());
+    $("pasteApply").addEventListener("click", () => {
+      const urls = $("pasteArea").value
+        .split(/\s+/)
+        .map((s) => s.trim())
+        .filter((s) => /^https?:\/\//i.test(s) || /\.(cbz|zip)$/i.test(s) || /\/$/.test(s));
+      if (!urls.length) { toast("No links found"); return; }
+      const empty = chapters.length === 1 && !chapters[0].url && !chapters[0].title;
+      const next = urls.map((url) => ({ url, title: "" }));
+      chapters = empty ? next : chapters.concat(next);
+      $("pasteArea").value = "";
+      $("pasteDialog").close();
+      renderChapters();
+    });
+
+    $("coverFromFirst").addEventListener("click", () => {
+      const data = readForm();
+      const name = data.chapters[0]?.title || defaultTitle(0);
+      fields.cover.value = `${name}_1`;
+      updatePreview();
+      saveLocal();
+    });
+
+    $("shareCombined").addEventListener("click", () => {
+      const details = buildDetails(false);
+      if (!details.chapters?.length && !details.title) {
+        toast("Add a title or at least one chapter URL");
+        return;
+      }
+      shareOrDownload([toFile("details.json", details)]);
+    });
+
+    $("shareSplit").addEventListener("click", () => {
+      const details = buildDetails(true);
+      const chaptersFile = buildChaptersFile();
+      if (!chaptersFile.chapters.length && !details.title) {
+        toast("Add a title or at least one chapter URL");
+        return;
+      }
+      shareOrDownload([
+        toFile("details.json", details),
+        toFile("chapters.json", chaptersFile),
+      ]);
+    });
+
+    $("importBtn").addEventListener("click", () => $("fileInput").click());
+    $("fileInput").addEventListener("change", async (e) => {
+      const files = [...(e.target.files || [])];
+      for (const file of files) {
+        try {
+          importObject(JSON.parse(await file.text()));
+        } catch {
+          toast(`Could not parse ${file.name}`);
+        }
+      }
+      e.target.value = "";
+      renderChapters();
+    });
+
+    $("clearBtn").addEventListener("click", () => {
+      Object.values(fields).forEach((el) => { el.value = el.tagName === "SELECT" ? "ongoing" : ""; });
+      chapters = [{ url: "", title: "" }];
+      localStorage.removeItem(STORAGE);
+      renderChapters();
+    });
+
+    loadLocal();
+    renderChapters();
+  </script>
+</body>
+</html>

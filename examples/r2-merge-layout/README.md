@@ -1,6 +1,6 @@
 # R2 bucket layout for R2 Library (Mihon / TachiManga)
 
-One folder = one library title. Mix any of: image folders, `.cbz`/`.zip`, and `chapters.json` (gallery URLs, remote archives, or page lists).
+One folder = one library title. Mix any of: image folders, `.cbz`/`.zip`, and chapter URLs in `details.json` (`chapters` array) or a separate `chapters.json`.
 
 ```text
 Manga/                          # folder name = content id
@@ -15,7 +15,7 @@ Manga/                          # folder name = content id
 
 ## chapters.json
 
-Array, or `{ "chapters": [ ... ] }`. Each entry is a URL string or an object. Merged with zip/folder chapters already in the series.
+Array, or `{ "chapters": [ ... ] }`. Can also live inside `details.json` as `"chapters": [ ... ]` (preferred — one file). Merged with zip/folder chapters already in the series.
 
 ```json
 {

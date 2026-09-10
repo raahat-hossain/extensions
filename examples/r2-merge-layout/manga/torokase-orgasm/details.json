@@ -1,12 +1,22 @@
 {
   "title": "Torokase Orgasm",
-  "summary": "Example merged series: one library entry, chapters pulled from nhentai + HentaiRead gallery URLs.",
+  "summary": "Example merged series: gallery URLs live in details.json chapters[].",
   "cover": "Chapter 1_1",
   "rating": "mature",
   "status": "ongoing",
-  "contentType": "manga",
-  "credits": [{ "name": "Oltlo", "role": "Artist" }],
-  "genres": [
-    { "id": "compilation", "title": "Compilation" }
+  "author": "Oltlo",
+  "artist": "Oltlo",
+  "genre": ["Compilation"],
+  "chapters": [
+    {
+      "title": "Chapter 1",
+      "number": 1,
+      "url": "https://nhentai.net/g/289857/"
+    },
+    {
+      "title": "Chapter 2",
+      "number": 2,
+      "url": "https://hentairead.com/hentai/example-slug/"
+    }
   ]
 }

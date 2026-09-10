@@ -4,35 +4,37 @@ Mihon / TachiManga / Tachiyomi extension. Reads a Cloudflare R2 bucket.
 
 Package: `eu.kanade.tachiyomi.extension.all.r2merge` (in-place update of R2 Merge — credentials persist).
 
-Lib **1.4**, `1.4.6`. NSFW.
+Lib **1.4**, `1.4.7`. NSFW.
 
 ## Bucket layout
 
-Each folder under the root prefix is a title. Mix any of: image folders, `.cbz`/`.zip`, and `chapters.json`.
+Each folder under the root prefix is a title. Mix any of: image folders, `.cbz`/`.zip`, and chapter URLs in `details.json` (or a separate `chapters.json`).
 
 ```text
 <title-id>/
-  details.json          # optional (or ComicInfo.xml)
+  details.json          # metadata + optional chapters[]
   cover.webp            # optional
-  chapters.json         # optional — gallery URLs, remote .cbz, or page lists
   Chapter 001/          # folder of images
-    001.jpg
-    002.jpg
   Chapter 002.cbz       # zip/cbz, ranged (not downloaded whole)
 ```
 
+Generator (details + chapters): [`web/index.html`](web/index.html)
+
 ```json
 {
+  "title": "Example",
+  "author": "Hyji",
+  "status": "completed",
+  "cover": "Chapter 1_1",
   "chapters": [
-    { "title": "Ch 1", "number": 1, "url": "https://nhentai.net/g/289857/" },
-    { "title": "Ch 2", "number": 2, "url": "https://hitomi.la/galleries/123456.html" },
-    { "title": "Ch 3", "number": 3, "url": "Chapter 003.cbz" },
-    { "title": "Ch 4", "number": 4, "pages": ["https://cdn.example.com/4/001.jpg"] }
+    { "title": "Chapter 1", "number": 1, "url": "https://nhentai.net/g/289857/" },
+    { "title": "Chapter 2", "number": 2, "url": "https://hitomi.la/galleries/123456.html" },
+    { "title": "Chapter 3", "number": 3, "url": "Chapter 003.cbz" }
   ]
 }
 ```
 
-Bucket zip/folder chapters are picked up automatically. `chapters.json` is merged on top (gallery hosts, relative/remote archives, or `pages`). Relative paths resolve against the series folder.
+Bucket zip/folder chapters are picked up automatically. Gallery URLs can live in `details.json` → `chapters` (preferred) or a separate `chapters.json`. Both are merged.
 
 Gallery hosts: nhentai, HentaiRead, HentaiNexus, Hentai2Read, PandaChaika, E-Hentai / ExHentai, Hitomi.
 
@@ -50,7 +52,7 @@ TachiManga wants **index.pb**:
 https://github.com/raahat-hossain/extensions/raw/cursor/r2-merge-extension-8f4a/repo/index.pb
 ```
 
-Sideload: [`repo/apk/tachiyomi-all.r2merge-v1.4.6.apk`](repo/apk/tachiyomi-all.r2merge-v1.4.6.apk)
+Sideload: [`repo/apk/tachiyomi-all.r2merge-v1.4.7.apk`](repo/apk/tachiyomi-all.r2merge-v1.4.7.apk)
 
 Settings: Account ID, Access Key, Secret, Bucket. Root Prefix empty if titles sit at bucket root. Optional public image URL (r2.dev / custom domain).
 

@@ -191,21 +191,21 @@
   <section>
     <h2>Series</h2>
     <label for="title">Title</label>
-    <input id="title" placeholder="Kinjo Yuuwaku…" />
+    <input id="title" placeholder="Series title" />
     <div class="row">
       <div>
         <label for="author">Author</label>
-        <input id="author" placeholder="Hyji" />
+        <input id="author" placeholder="Name" />
       </div>
       <div>
         <label for="artist">Artist</label>
-        <input id="artist" placeholder="Hyji" />
+        <input id="artist" placeholder="Name" />
       </div>
     </div>
     <label for="description">Description</label>
     <textarea id="description" placeholder="Optional"></textarea>
     <label for="genre">Genre</label>
-    <input id="genre" placeholder="Netorare, Milf  — comma separated" />
+    <input id="genre" placeholder="Action, Drama — comma separated" />
     <div class="row">
       <div>
         <label for="status">Status</label>
@@ -257,7 +257,7 @@
   <dialog id="pasteDialog">
     <h3>Paste links</h3>
     <p class="hint" style="margin-top:0">One URL per line. Names default to Chapter N.</p>
-    <textarea id="pasteArea" placeholder="https://hentairead.com/hentai/…"></textarea>
+    <textarea id="pasteArea" placeholder="https://example.com/g/123/"></textarea>
     <menu>
       <button class="ghost" type="button" id="pasteCancel">Cancel</button>
       <button class="primary" type="button" id="pasteApply">Add</button>
@@ -321,7 +321,7 @@
         <div class="chapter" data-i="${i}">
           <div class="chapter-head">
             <div class="idx">${i + 1}</div>
-            <input class="grow ch-url" data-i="${i}" placeholder="https://nhentai.net/g/…  or  Chapter 001.cbz" value="${escapeAttr(ch.url)}" />
+            <input class="grow ch-url" data-i="${i}" placeholder="https://…  or  Chapter 001.cbz" value="${escapeAttr(ch.url)}" />
             <button class="icon-btn" type="button" data-up="${i}" ${i === 0 ? "disabled" : ""}>↑</button>
             <button class="icon-btn" type="button" data-down="${i}" ${i === chapters.length - 1 ? "disabled" : ""}>↓</button>
             <button class="icon-btn danger" type="button" data-del="${i}">✕</button>

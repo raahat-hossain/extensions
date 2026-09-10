@@ -24,6 +24,12 @@ JSON generator:
 
 Source: [`web/index.html`](web/index.html).
 
+Suwatte source list (directory URL, not `runners.json`):
+
+```
+https://raahat-hossain.github.io/extensions/suwatte
+```
+
 ```json
 {
   "title": "Example",

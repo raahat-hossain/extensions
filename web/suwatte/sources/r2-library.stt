@@ -1,0 +1,4457 @@
+"use httpclient";
+var global = globalThis;
+"use strict";
+var SourcePackage = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __esm = (fn, res) => function __init() {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  };
+  var __commonJS = (cb, mod) => function __require() {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  };
+  var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+
+  // node_modules/esbuild-plugins-node-modules-polyfill/globals/process.js
+  var init_process = __esm({
+    "node_modules/esbuild-plugins-node-modules-polyfill/globals/process.js"() {
+    }
+  });
+
+  // node_modules/esbuild-plugins-node-modules-polyfill/globals/Buffer.js
+  var init_Buffer = __esm({
+    "node_modules/esbuild-plugins-node-modules-polyfill/globals/Buffer.js"() {
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/runtime/index.js
+  var require_runtime = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/runtime/index.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.instantiateSource = exports.buildVariantMetadata = exports.readSourceVariants = exports.readSourceInfo = exports.normalizeSourceEntry = exports.resolveDefaultExport = void 0;
+      var resolveDefaultExport = (sourceModule) => {
+        const value = sourceModule;
+        const resolved = typeof value === "object" && value !== null && "default" in value ? value.default : value;
+        if (typeof resolved !== "function" || !("info" in resolved)) {
+          throw new Error("Default export must be a class with a static 'info' property");
+        }
+        return resolved;
+      };
+      exports.resolveDefaultExport = resolveDefaultExport;
+      exports.normalizeSourceEntry = exports.resolveDefaultExport;
+      var readSourceInfo = (cls) => {
+        const info = cls.info;
+        if (!info || typeof info !== "object" || !info.id) {
+          throw new Error("Source class must have a static 'info' property with at least an 'id'");
+        }
+        return info;
+      };
+      exports.readSourceInfo = readSourceInfo;
+      var readSourceVariants = (cls) => {
+        const variants = cls.variants;
+        if (Array.isArray(variants) && variants.length > 0) {
+          return variants;
+        }
+        return [
+          {
+            id: cls.info.id,
+            name: cls.info.name,
+            languages: cls.info.languages
+          }
+        ];
+      };
+      exports.readSourceVariants = readSourceVariants;
+      var buildVariantMetadata = (info, variant) => {
+        var _a, _b, _c;
+        return {
+          ...info,
+          id: (_a = variant.id) != null ? _a : info.id,
+          name: (_b = variant.name) != null ? _b : info.name,
+          languages: (_c = variant.languages) != null ? _c : info.languages
+        };
+      };
+      exports.buildVariantMetadata = buildVariantMetadata;
+      var instantiateSource = (cls, variant) => {
+        return new cls(variant == null ? void 0 : variant.args);
+      };
+      exports.instantiateSource = instantiateSource;
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/networking/builder.js
+  var require_builder = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/networking/builder.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.NetworkClientBuilder = void 0;
+      var NetworkClientBuilder = class {
+        constructor() {
+          // Array of functions that transform requests
+          __publicField(this, "requestTransformers", []);
+          // Array of functions that transform responses
+          __publicField(this, "responseTransformers", []);
+          // Object representing HTTP headers, where each key-value pair represents a header
+          __publicField(this, "headers", {});
+          // Array of cookies
+          __publicField(this, "cookies", []);
+          // The maximum time to wait for a request to complete, in milliseconds
+          __publicField(this, "timeout");
+          // The number of requests allowed per second
+          __publicField(this, "requestsPerSecond");
+          // A function that determines whether a status code is considered successful
+          __publicField(this, "statusValidator");
+          // The maximum number of retries for a request
+          __publicField(this, "maxRetries");
+        }
+        /**
+         * Sets the rate limit for the NetworkClient.
+         *
+         * @param requests - The maximum number of requests to make per interval.
+         * @param interval - The length of the rate limiting interval in seconds.
+         * @returns The builder, to allow for method chaining.
+         */
+        setRateLimit(requests, interval) {
+          this.requestsPerSecond = requests / interval;
+          return this;
+        }
+        /**
+         * Adds a request interceptor to the NetworkClient.
+         *
+         * @param transformer - The interceptor to add. This should be a function that takes a request and modifies it in some way.
+         * @returns The builder, to allow for method chaining.
+         */
+        addRequestInterceptor(transformer) {
+          this.requestTransformers.push(transformer);
+          return this;
+        }
+        /**
+         * Adds a response interceptor to the NetworkClient.
+         *
+         * @param transformer - The interceptor to add. This should be a function that takes a response and modifies it in some way.
+         * @returns The builder, to allow for method chaining.
+         */
+        addResponseInterceptor(transformer) {
+          this.responseTransformers.push(transformer);
+          return this;
+        }
+        /**
+         * Sets the authorization token for the NetworkClient.
+         *
+         * @param token - The token to be included in the Authorization header of every request.
+         * @returns The builder, to allow for method chaining.
+         */
+        setAuthorizationToken(token) {
+          return this.addHeader("Authorization", token);
+        }
+        /**
+         * Sets the status validator for the NetworkClient.
+         *
+         * @param validator - A function that takes a status code and returns true if it is considered successful.
+         * @returns The builder, to allow for method chaining.
+         */
+        setStatusValidator(validator) {
+          this.statusValidator = validator;
+          return this;
+        }
+        /**
+         * Sets the timeout for requests made by the NetworkClient.
+         *
+         * @param timeout - The maximum time to wait for a request to complete, in milliseconds.
+         * @returns The builder, to allow for method chaining.
+         */
+        setTimeout(timeout) {
+          this.timeout = timeout;
+          return this;
+        }
+        /**
+         * Sets the maximum number of retries for this request by the NetworkClient.
+         *
+         * @param retries - The maximum number of retries for this request
+         * @returns The builder, to allow for method chaining.
+         */
+        setMaxRetries(retries) {
+          this.maxRetries = retries;
+          return this;
+        }
+        /**
+         * Sets a header for the NetworkClient.
+         *
+         * @param key - The name of the header
+         * @param value - The value of the header
+         * @returns The builder, to allow for method chaining.
+         */
+        addHeader(key, value) {
+          this.headers[key] = value;
+          return this;
+        }
+        /**
+         * Sets a cookie for the NetworkClient.
+         *
+         * @param cookie - The cookie to be included in every request.
+         * @returns The builder, to allow for method chaining.
+         */
+        addCookie(cookie) {
+          this.cookies.push(cookie);
+          return this;
+        }
+        /**
+         * Builds a NetworkClient using the parameters set on the builder.
+         *
+         * @returns A NetworkClient with the configured parameters.
+         */
+        build() {
+          return new NetworkClient(this);
+        }
+      };
+      exports.NetworkClientBuilder = NetworkClientBuilder;
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/networking/client.js
+  var require_client = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/networking/client.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/networking/http.js
+  var require_http = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/networking/http.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/networking/request.js
+  var require_request = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/networking/request.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/networking/response.js
+  var require_response = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/networking/response.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/networking/transformer.js
+  var require_transformer = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/networking/transformer.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/networking/index.js
+  var require_networking = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/networking/index.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
+        if (k2 === void 0) k2 = k;
+        var desc = Object.getOwnPropertyDescriptor(m, k);
+        if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+          desc = { enumerable: true, get: function() {
+            return m[k];
+          } };
+        }
+        Object.defineProperty(o, k2, desc);
+      }) : (function(o, m, k, k2) {
+        if (k2 === void 0) k2 = k;
+        o[k2] = m[k];
+      }));
+      var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+        for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p)) __createBinding(exports2, m, p);
+      };
+      Object.defineProperty(exports, "__esModule", { value: true });
+      __exportStar(require_builder(), exports);
+      __exportStar(require_client(), exports);
+      __exportStar(require_http(), exports);
+      __exportStar(require_request(), exports);
+      __exportStar(require_response(), exports);
+      __exportStar(require_transformer(), exports);
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/native.js
+  var require_native = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/native.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/source/destination.js
+  var require_destination = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/source/destination.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.URLDestination = URLDestination;
+      exports.ContentDestination = ContentDestination;
+      exports.ItemPageDestination = ItemPageDestination;
+      exports.ChapterDestination = ChapterDestination;
+      exports.ItemListDestination = ItemListDestination;
+      exports.NoDestination = NoDestination;
+      function URLDestination(props, title = null) {
+        return {
+          url: {
+            props,
+            title
+          }
+        };
+      }
+      function ContentDestination(props, title = null) {
+        return {
+          content: {
+            props,
+            title
+          }
+        };
+      }
+      function ItemPageDestination(props, title = null) {
+        return {
+          page: {
+            props,
+            title
+          }
+        };
+      }
+      function ChapterDestination(props) {
+        return {
+          chapter: {
+            props
+          }
+        };
+      }
+      function ItemListDestination(props, title = null) {
+        return {
+          list: {
+            props,
+            title
+          }
+        };
+      }
+      function NoDestination() {
+        return {
+          empty: {
+            props: {}
+          }
+        };
+      }
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/source/chapter.js
+  var require_chapter = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/source/chapter.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.ChapterLockedError = exports.ChapterUnavailableError = exports.SOURCE_CHAPTER_TEXT_LIMITS = exports.SourceChapterTextFormat = void 0;
+      var SourceChapterTextFormat;
+      (function(SourceChapterTextFormat2) {
+        SourceChapterTextFormat2["HTML"] = "html";
+        SourceChapterTextFormat2["PLAIN_TEXT"] = "plainText";
+      })(SourceChapterTextFormat || (exports.SourceChapterTextFormat = SourceChapterTextFormat = {}));
+      exports.SOURCE_CHAPTER_TEXT_LIMITS = Object.freeze({
+        bridgePayload: 4 * 1024 * 1024,
+        body: 2 * 1024 * 1024,
+        resources: 512,
+        resourceHref: 2048,
+        resourceURL: 8192,
+        resourceMediaType: 256
+      });
+      var ChapterUnavailableError = class extends Error {
+        constructor(message = "Chapter content is unavailable.") {
+          super(message);
+          this.name = "ChapterUnavailable";
+        }
+      };
+      exports.ChapterUnavailableError = ChapterUnavailableError;
+      var ChapterLockedError = class extends Error {
+        constructor(message = "Chapter content is locked.") {
+          super(message);
+          this.name = "ChapterLocked";
+        }
+      };
+      exports.ChapterLockedError = ChapterLockedError;
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/source/configuration.js
+  var require_configuration = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/source/configuration.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/source/content.js
+  var require_content = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/source/content.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.ContentRating = exports.TrackStatus = exports.ReadingMode = exports.ContentType = exports.ContentStatus = void 0;
+      var ContentStatus;
+      (function(ContentStatus2) {
+        ContentStatus2[ContentStatus2["UNKNOWN"] = 0] = "UNKNOWN";
+        ContentStatus2[ContentStatus2["ONGOING"] = 1] = "ONGOING";
+        ContentStatus2[ContentStatus2["COMPLETED"] = 2] = "COMPLETED";
+        ContentStatus2[ContentStatus2["CANCELLED"] = 3] = "CANCELLED";
+        ContentStatus2[ContentStatus2["HIATUS"] = 4] = "HIATUS";
+      })(ContentStatus || (exports.ContentStatus = ContentStatus = {}));
+      var ContentType;
+      (function(ContentType2) {
+        ContentType2[ContentType2["MANGA"] = 0] = "MANGA";
+        ContentType2[ContentType2["MANHUA"] = 1] = "MANHUA";
+        ContentType2[ContentType2["MANHWA"] = 2] = "MANHWA";
+        ContentType2[ContentType2["COMIC"] = 3] = "COMIC";
+        ContentType2[ContentType2["NOVEL"] = 4] = "NOVEL";
+      })(ContentType || (exports.ContentType = ContentType = {}));
+      var ReadingMode;
+      (function(ReadingMode2) {
+        ReadingMode2[ReadingMode2["PAGED_MANGA"] = 0] = "PAGED_MANGA";
+        ReadingMode2[ReadingMode2["PAGED_COMIC"] = 1] = "PAGED_COMIC";
+        ReadingMode2[ReadingMode2["PAGED_VERTICAL"] = 2] = "PAGED_VERTICAL";
+        ReadingMode2[ReadingMode2["VERTICAL"] = 3] = "VERTICAL";
+      })(ReadingMode || (exports.ReadingMode = ReadingMode = {}));
+      var TrackStatus;
+      (function(TrackStatus2) {
+        TrackStatus2[TrackStatus2["UNTRACKED"] = 0] = "UNTRACKED";
+        TrackStatus2[TrackStatus2["READING"] = 1] = "READING";
+        TrackStatus2[TrackStatus2["PLANNING"] = 2] = "PLANNING";
+        TrackStatus2[TrackStatus2["COMPLETED"] = 3] = "COMPLETED";
+        TrackStatus2[TrackStatus2["PAUSED"] = 4] = "PAUSED";
+        TrackStatus2[TrackStatus2["DROPPED"] = 5] = "DROPPED";
+        TrackStatus2[TrackStatus2["REPEATING"] = 6] = "REPEATING";
+      })(TrackStatus || (exports.TrackStatus = TrackStatus = {}));
+      var ContentRating;
+      (function(ContentRating2) {
+        ContentRating2[ContentRating2["EVERYONE"] = 0] = "EVERYONE";
+        ContentRating2[ContentRating2["SUGGESTIVE"] = 1] = "SUGGESTIVE";
+        ContentRating2[ContentRating2["MATURE"] = 2] = "MATURE";
+        ContentRating2[ContentRating2["UNKNOWN"] = 3] = "UNKNOWN";
+      })(ContentRating || (exports.ContentRating = ContentRating = {}));
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/source/item.js
+  var require_item = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/source/item.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/source/page.js
+  var require_page = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/source/page.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.PageSectionStyle = void 0;
+      var PageSectionStyle;
+      (function(PageSectionStyle2) {
+        PageSectionStyle2[PageSectionStyle2["DEFAULT"] = 0] = "DEFAULT";
+        PageSectionStyle2[PageSectionStyle2["DETAIL_VERTICAL"] = 1] = "DETAIL_VERTICAL";
+        PageSectionStyle2[PageSectionStyle2["DETAIL_HORIZONTAL"] = 2] = "DETAIL_HORIZONTAL";
+        PageSectionStyle2[PageSectionStyle2["GALLERY"] = 3] = "GALLERY";
+        PageSectionStyle2[PageSectionStyle2["LIST"] = 4] = "LIST";
+        PageSectionStyle2[PageSectionStyle2["GRID"] = 5] = "GRID";
+        PageSectionStyle2[PageSectionStyle2["TAG_GRID"] = 6] = "TAG_GRID";
+        PageSectionStyle2[PageSectionStyle2["TAG_LIST"] = 7] = "TAG_LIST";
+        PageSectionStyle2[PageSectionStyle2["BANNER"] = 8] = "BANNER";
+        PageSectionStyle2[PageSectionStyle2["HIGHLIGHT"] = 9] = "HIGHLIGHT";
+        PageSectionStyle2[PageSectionStyle2["READABLE"] = 10] = "READABLE";
+        PageSectionStyle2[PageSectionStyle2["MOSAIC"] = 11] = "MOSAIC";
+        PageSectionStyle2[PageSectionStyle2["RANKED"] = 12] = "RANKED";
+        PageSectionStyle2[PageSectionStyle2["STORY_RAIL"] = 13] = "STORY_RAIL";
+        PageSectionStyle2[PageSectionStyle2["EDITORIAL"] = 14] = "EDITORIAL";
+        PageSectionStyle2[PageSectionStyle2["THREE_STACK"] = 15] = "THREE_STACK";
+        PageSectionStyle2[PageSectionStyle2["WINDOWPANE"] = 16] = "WINDOWPANE";
+        PageSectionStyle2[PageSectionStyle2["SIDECAR"] = 17] = "SIDECAR";
+        PageSectionStyle2[PageSectionStyle2["DUET"] = 18] = "DUET";
+        PageSectionStyle2[PageSectionStyle2["TAPESTRY"] = 19] = "TAPESTRY";
+      })(PageSectionStyle || (exports.PageSectionStyle = PageSectionStyle = {}));
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/source/delegate.js
+  var require_delegate = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/source/delegate.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/source/tag.js
+  var require_tag = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/source/tag.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/source/updates.js
+  var require_updates = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/source/updates.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/source/source.js
+  var require_source = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/source/source.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/source/filter.js
+  var require_filter = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/source/filter.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.ToggleFilter = ToggleFilter;
+      exports.TextFilter = TextFilter;
+      exports.PickerFilter = PickerFilter;
+      exports.SelectFilter = SelectFilter;
+      exports.SearchFilter = SearchFilter;
+      function ToggleFilter() {
+        return {
+          toggle: {
+            props: true
+          }
+        };
+      }
+      function TextFilter() {
+        return {
+          text: {
+            props: true
+          }
+        };
+      }
+      function PickerFilter(props) {
+        return {
+          picker: {
+            props
+          }
+        };
+      }
+      function SelectFilter(options, exclude = false) {
+        return {
+          select: {
+            props: {
+              options,
+              exclude
+            }
+          }
+        };
+      }
+      function SearchFilter(id, title, kind, subtitle) {
+        return {
+          id,
+          title,
+          subtitle,
+          kind
+        };
+      }
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/source/form.js
+  var require_form = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/source/form.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.UIKeyboardType = void 0;
+      exports.UIToggle = UIToggle;
+      exports.UIDatePicker = UIDatePicker;
+      exports.UIPicker = UIPicker;
+      exports.UISelect = UISelect;
+      exports.UIStepper = UIStepper;
+      exports.UITextField = UITextField;
+      exports.UIWebViewButton = UIWebViewButton;
+      exports.UIOAuthButton = UIOAuthButton;
+      var UIKeyboardType;
+      (function(UIKeyboardType2) {
+        UIKeyboardType2[UIKeyboardType2["ALPHANUMERIC"] = 0] = "ALPHANUMERIC";
+        UIKeyboardType2[UIKeyboardType2["EMAIL"] = 1] = "EMAIL";
+        UIKeyboardType2[UIKeyboardType2["NUMERIC"] = 2] = "NUMERIC";
+        UIKeyboardType2[UIKeyboardType2["NUMERIC_DECIMAL"] = 3] = "NUMERIC_DECIMAL";
+      })(UIKeyboardType || (exports.UIKeyboardType = UIKeyboardType = {}));
+      function UIToggle(props) {
+        return {
+          toggle: { props }
+        };
+      }
+      function UIDatePicker(props) {
+        return {
+          datepicker: { props }
+        };
+      }
+      function UIPicker(props) {
+        return {
+          picker: { props }
+        };
+      }
+      function UISelect(props) {
+        return {
+          select: {
+            props
+          }
+        };
+      }
+      function UIStepper(props) {
+        return {
+          stepper: { props }
+        };
+      }
+      function UITextField(props) {
+        return {
+          textfield: { props }
+        };
+      }
+      function UIWebViewButton(props) {
+        return {
+          webview: {
+            props
+          }
+        };
+      }
+      function UIOAuthButton(props) {
+        return {
+          oauth: {
+            props
+          }
+        };
+      }
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/source/image.js
+  var require_image = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/source/image.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/source/index.js
+  var require_source2 = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/source/index.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
+        if (k2 === void 0) k2 = k;
+        var desc = Object.getOwnPropertyDescriptor(m, k);
+        if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+          desc = { enumerable: true, get: function() {
+            return m[k];
+          } };
+        }
+        Object.defineProperty(o, k2, desc);
+      }) : (function(o, m, k, k2) {
+        if (k2 === void 0) k2 = k;
+        o[k2] = m[k];
+      }));
+      var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+        for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p)) __createBinding(exports2, m, p);
+      };
+      Object.defineProperty(exports, "__esModule", { value: true });
+      __exportStar(require_destination(), exports);
+      __exportStar(require_chapter(), exports);
+      __exportStar(require_configuration(), exports);
+      __exportStar(require_content(), exports);
+      __exportStar(require_item(), exports);
+      __exportStar(require_page(), exports);
+      __exportStar(require_delegate(), exports);
+      __exportStar(require_tag(), exports);
+      __exportStar(require_updates(), exports);
+      __exportStar(require_source(), exports);
+      __exportStar(require_filter(), exports);
+      __exportStar(require_form(), exports);
+      __exportStar(require_image(), exports);
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/store.js
+  var require_store = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/store.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/utils.js
+  var require_utils = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/utils.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/toolchain.js
+  var require_toolchain = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/toolchain.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+    }
+  });
+
+  // node_modules/@suwatte/toolchain/dist/types/index.js
+  var require_types = __commonJS({
+    "node_modules/@suwatte/toolchain/dist/types/index.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
+        if (k2 === void 0) k2 = k;
+        var desc = Object.getOwnPropertyDescriptor(m, k);
+        if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+          desc = { enumerable: true, get: function() {
+            return m[k];
+          } };
+        }
+        Object.defineProperty(o, k2, desc);
+      }) : (function(o, m, k, k2) {
+        if (k2 === void 0) k2 = k;
+        o[k2] = m[k];
+      }));
+      var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+        for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p)) __createBinding(exports2, m, p);
+      };
+      Object.defineProperty(exports, "__esModule", { value: true });
+      __exportStar(require_networking(), exports);
+      __exportStar(require_native(), exports);
+      __exportStar(require_source2(), exports);
+      __exportStar(require_store(), exports);
+      __exportStar(require_utils(), exports);
+      __exportStar(require_toolchain(), exports);
+    }
+  });
+
+  // node_modules/fflate/lib/browser.cjs
+  var require_browser = __commonJS({
+    "node_modules/fflate/lib/browser.cjs"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      var ch2 = {};
+      var node_worker_1 = {};
+      node_worker_1["default"] = (function(c, id, msg, transfer, cb) {
+        var w = new Worker(ch2[id] || (ch2[id] = URL.createObjectURL(new Blob([
+          c + ';addEventListener("error",function(e){e=e.error;postMessage({$e$:[e.message,e.code,e.stack]})})'
+        ], { type: "text/javascript" }))));
+        w.onmessage = function(e) {
+          var d = e.data, ed = d.$e$;
+          if (ed) {
+            var err2 = new Error(ed[0]);
+            err2["code"] = ed[1];
+            err2.stack = ed[2];
+            cb(err2, null);
+          } else
+            cb(null, d);
+        };
+        w.postMessage(msg, transfer);
+        return w;
+      });
+      var u8 = Uint8Array;
+      var u16 = Uint16Array;
+      var i32 = Int32Array;
+      var fleb = new u8([
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3,
+        3,
+        4,
+        4,
+        4,
+        4,
+        5,
+        5,
+        5,
+        5,
+        0,
+        /* unused */
+        0,
+        0,
+        /* impossible */
+        0
+      ]);
+      var fdeb = new u8([
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        2,
+        2,
+        3,
+        3,
+        4,
+        4,
+        5,
+        5,
+        6,
+        6,
+        7,
+        7,
+        8,
+        8,
+        9,
+        9,
+        10,
+        10,
+        11,
+        11,
+        12,
+        12,
+        13,
+        13,
+        /* unused */
+        0,
+        0
+      ]);
+      var clim = new u8([16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]);
+      var freb = function(eb, start) {
+        var b = new u16(31);
+        for (var i2 = 0; i2 < 31; ++i2) {
+          b[i2] = start += 1 << eb[i2 - 1];
+        }
+        var r = new i32(b[30]);
+        for (var i2 = 1; i2 < 30; ++i2) {
+          for (var j = b[i2]; j < b[i2 + 1]; ++j) {
+            r[j] = j - b[i2] << 5 | i2;
+          }
+        }
+        return { b, r };
+      };
+      var _a = freb(fleb, 2);
+      var fl = _a.b;
+      var revfl = _a.r;
+      fl[28] = 258, revfl[258] = 28;
+      var _b = freb(fdeb, 0);
+      var fd = _b.b;
+      var revfd = _b.r;
+      var rev = new u16(32768);
+      for (i = 0; i < 32768; ++i) {
+        x = (i & 43690) >> 1 | (i & 21845) << 1;
+        x = (x & 52428) >> 2 | (x & 13107) << 2;
+        x = (x & 61680) >> 4 | (x & 3855) << 4;
+        rev[i] = ((x & 65280) >> 8 | (x & 255) << 8) >> 1;
+      }
+      var x;
+      var i;
+      var hMap = (function(cd, mb, r) {
+        var s = cd.length;
+        var i2 = 0;
+        var l = new u16(mb);
+        for (; i2 < s; ++i2) {
+          if (cd[i2])
+            ++l[cd[i2] - 1];
+        }
+        var le = new u16(mb);
+        for (i2 = 1; i2 < mb; ++i2) {
+          le[i2] = le[i2 - 1] + l[i2 - 1] << 1;
+        }
+        var co;
+        if (r) {
+          co = new u16(1 << mb);
+          var rvb = 15 - mb;
+          for (i2 = 0; i2 < s; ++i2) {
+            if (cd[i2]) {
+              var sv = i2 << 4 | cd[i2];
+              var r_1 = mb - cd[i2];
+              var v = le[cd[i2] - 1]++ << r_1;
+              for (var m = v | (1 << r_1) - 1; v <= m; ++v) {
+                co[rev[v] >> rvb] = sv;
+              }
+            }
+          }
+        } else {
+          co = new u16(s);
+          for (i2 = 0; i2 < s; ++i2) {
+            if (cd[i2]) {
+              co[i2] = rev[le[cd[i2] - 1]++] >> 15 - cd[i2];
+            }
+          }
+        }
+        return co;
+      });
+      var flt = new u8(288);
+      for (i = 0; i < 144; ++i)
+        flt[i] = 8;
+      var i;
+      for (i = 144; i < 256; ++i)
+        flt[i] = 9;
+      var i;
+      for (i = 256; i < 280; ++i)
+        flt[i] = 7;
+      var i;
+      for (i = 280; i < 288; ++i)
+        flt[i] = 8;
+      var i;
+      var fdt = new u8(32);
+      for (i = 0; i < 32; ++i)
+        fdt[i] = 5;
+      var i;
+      var flm = /* @__PURE__ */ hMap(flt, 9, 0);
+      var flrm = /* @__PURE__ */ hMap(flt, 9, 1);
+      var fdm = /* @__PURE__ */ hMap(fdt, 5, 0);
+      var fdrm = /* @__PURE__ */ hMap(fdt, 5, 1);
+      var max = function(a) {
+        var m = a[0];
+        for (var i2 = 1; i2 < a.length; ++i2) {
+          if (a[i2] > m)
+            m = a[i2];
+        }
+        return m;
+      };
+      var bits = function(d, p, m) {
+        var o = p / 8 | 0;
+        return (d[o] | d[o + 1] << 8) >> (p & 7) & m;
+      };
+      var bits16 = function(d, p) {
+        var o = p / 8 | 0;
+        return (d[o] | d[o + 1] << 8 | d[o + 2] << 16) >> (p & 7);
+      };
+      var shft = function(p) {
+        return (p + 7) / 8 | 0;
+      };
+      var slc = function(v, s, e) {
+        if (s == null || s < 0)
+          s = 0;
+        if (e == null || e > v.length)
+          e = v.length;
+        return new u8(v.subarray(s, e));
+      };
+      exports.FlateErrorCode = {
+        UnexpectedEOF: 0,
+        InvalidBlockType: 1,
+        InvalidLengthLiteral: 2,
+        InvalidDistance: 3,
+        StreamFinished: 4,
+        NoStreamHandler: 5,
+        InvalidHeader: 6,
+        NoCallback: 7,
+        InvalidUTF8: 8,
+        ExtraFieldTooLong: 9,
+        InvalidDate: 10,
+        FilenameTooLong: 11,
+        StreamFinishing: 12,
+        InvalidZipData: 13,
+        UnknownCompressionMethod: 14
+      };
+      var ec = [
+        "unexpected EOF",
+        "invalid block type",
+        "invalid length/literal",
+        "invalid distance",
+        "stream finished",
+        "no stream handler",
+        ,
+        "no callback",
+        "invalid UTF-8 data",
+        "extra field too long",
+        "date not in range 1980-2099",
+        "filename too long",
+        "stream finishing",
+        "invalid zip data"
+        // determined by unknown compression method
+      ];
+      var err = function(ind, msg, nt) {
+        var e = new Error(msg || ec[ind]);
+        e.code = ind;
+        if (Error.captureStackTrace)
+          Error.captureStackTrace(e, err);
+        if (!nt)
+          throw e;
+        return e;
+      };
+      var inflt = function(dat, st, buf, dict) {
+        var sl = dat.length, dl = dict ? dict.length : 0;
+        if (!sl || st.f && !st.l)
+          return buf || new u8(0);
+        var noBuf = !buf;
+        var resize = noBuf || st.i != 2;
+        var noSt = st.i;
+        if (noBuf)
+          buf = new u8(sl * 3);
+        var cbuf = function(l2) {
+          var bl = buf.length;
+          if (l2 > bl) {
+            var nbuf = new u8(Math.max(bl * 2, l2));
+            nbuf.set(buf);
+            buf = nbuf;
+          }
+        };
+        var final = st.f || 0, pos = st.p || 0, bt = st.b || 0, lm = st.l, dm = st.d, lbt = st.m, dbt = st.n;
+        var tbts = sl * 8;
+        do {
+          if (!lm) {
+            final = bits(dat, pos, 1);
+            var type = bits(dat, pos + 1, 3);
+            pos += 3;
+            if (!type) {
+              var s = shft(pos) + 4, l = dat[s - 4] | dat[s - 3] << 8, t = s + l;
+              if (t > sl) {
+                if (noSt)
+                  err(0);
+                break;
+              }
+              if (resize)
+                cbuf(bt + l);
+              buf.set(dat.subarray(s, t), bt);
+              st.b = bt += l, st.p = pos = t * 8, st.f = final;
+              continue;
+            } else if (type == 1)
+              lm = flrm, dm = fdrm, lbt = 9, dbt = 5;
+            else if (type == 2) {
+              var hLit = bits(dat, pos, 31) + 257, hcLen = bits(dat, pos + 10, 15) + 4;
+              var tl = hLit + bits(dat, pos + 5, 31) + 1;
+              pos += 14;
+              var ldt = new u8(tl);
+              var clt = new u8(19);
+              for (var i2 = 0; i2 < hcLen; ++i2) {
+                clt[clim[i2]] = bits(dat, pos + i2 * 3, 7);
+              }
+              pos += hcLen * 3;
+              var clb = max(clt), clbmsk = (1 << clb) - 1;
+              var clm = hMap(clt, clb, 1);
+              for (var i2 = 0; i2 < tl; ) {
+                var r = clm[bits(dat, pos, clbmsk)];
+                pos += r & 15;
+                var s = r >> 4;
+                if (s < 16) {
+                  ldt[i2++] = s;
+                } else {
+                  var c = 0, n = 0;
+                  if (s == 16)
+                    n = 3 + bits(dat, pos, 3), pos += 2, c = ldt[i2 - 1];
+                  else if (s == 17)
+                    n = 3 + bits(dat, pos, 7), pos += 3;
+                  else if (s == 18)
+                    n = 11 + bits(dat, pos, 127), pos += 7;
+                  while (n--)
+                    ldt[i2++] = c;
+                }
+              }
+              var lt = ldt.subarray(0, hLit), dt = ldt.subarray(hLit);
+              lbt = max(lt);
+              dbt = max(dt);
+              lm = hMap(lt, lbt, 1);
+              dm = hMap(dt, dbt, 1);
+            } else
+              err(1);
+            if (pos > tbts) {
+              if (noSt)
+                err(0);
+              break;
+            }
+          }
+          if (resize)
+            cbuf(bt + 131072);
+          var lms = (1 << lbt) - 1, dms = (1 << dbt) - 1;
+          var lpos = pos;
+          for (; ; lpos = pos) {
+            var c = lm[bits16(dat, pos) & lms], sym = c >> 4;
+            pos += c & 15;
+            if (pos > tbts) {
+              if (noSt)
+                err(0);
+              break;
+            }
+            if (!c)
+              err(2);
+            if (sym < 256)
+              buf[bt++] = sym;
+            else if (sym == 256) {
+              lpos = pos, lm = null;
+              break;
+            } else {
+              var add = sym - 254;
+              if (sym > 264) {
+                var i2 = sym - 257, b = fleb[i2];
+                add = bits(dat, pos, (1 << b) - 1) + fl[i2];
+                pos += b;
+              }
+              var d = dm[bits16(dat, pos) & dms], dsym = d >> 4;
+              if (!d)
+                err(3);
+              pos += d & 15;
+              var dt = fd[dsym];
+              if (dsym > 3) {
+                var b = fdeb[dsym];
+                dt += bits16(dat, pos) & (1 << b) - 1, pos += b;
+              }
+              if (pos > tbts) {
+                if (noSt)
+                  err(0);
+                break;
+              }
+              if (resize)
+                cbuf(bt + 131072);
+              var end = bt + add;
+              if (bt < dt) {
+                var shift = dl - dt, dend = Math.min(dt, end);
+                if (shift + bt < 0)
+                  err(3);
+                for (; bt < dend; ++bt)
+                  buf[bt] = dict[shift + bt];
+              }
+              for (; bt < end; ++bt)
+                buf[bt] = buf[bt - dt];
+            }
+          }
+          st.l = lm, st.p = lpos, st.b = bt, st.f = final;
+          if (lm)
+            final = 1, st.m = lbt, st.d = dm, st.n = dbt;
+        } while (!final);
+        return bt != buf.length && noBuf ? slc(buf, 0, bt) : buf.subarray(0, bt);
+      };
+      var wbits = function(d, p, v) {
+        v <<= p & 7;
+        var o = p / 8 | 0;
+        d[o] |= v;
+        d[o + 1] |= v >> 8;
+      };
+      var wbits16 = function(d, p, v) {
+        v <<= p & 7;
+        var o = p / 8 | 0;
+        d[o] |= v;
+        d[o + 1] |= v >> 8;
+        d[o + 2] |= v >> 16;
+      };
+      var hTree = function(d, mb) {
+        var t = [];
+        for (var i2 = 0; i2 < d.length; ++i2) {
+          if (d[i2])
+            t.push({ s: i2, f: d[i2] });
+        }
+        var s = t.length;
+        var t2 = t.slice();
+        if (!s)
+          return { t: et, l: 0 };
+        if (s == 1) {
+          var v = new u8(t[0].s + 1);
+          v[t[0].s] = 1;
+          return { t: v, l: 1 };
+        }
+        t.sort(function(a, b) {
+          return a.f - b.f;
+        });
+        t.push({ s: -1, f: 25001 });
+        var l = t[0], r = t[1], i0 = 0, i1 = 1, i22 = 2;
+        t[0] = { s: -1, f: l.f + r.f, l, r };
+        while (i1 != s - 1) {
+          l = t[t[i0].f < t[i22].f ? i0++ : i22++];
+          r = t[i0 != i1 && t[i0].f < t[i22].f ? i0++ : i22++];
+          t[i1++] = { s: -1, f: l.f + r.f, l, r };
+        }
+        var maxSym = t2[0].s;
+        for (var i2 = 1; i2 < s; ++i2) {
+          if (t2[i2].s > maxSym)
+            maxSym = t2[i2].s;
+        }
+        var tr = new u16(maxSym + 1);
+        var mbt = ln(t[i1 - 1], tr, 0);
+        if (mbt > mb) {
+          var i2 = 0, dt = 0;
+          var lft = mbt - mb, cst = 1 << lft;
+          t2.sort(function(a, b) {
+            return tr[b.s] - tr[a.s] || a.f - b.f;
+          });
+          for (; i2 < s; ++i2) {
+            var i2_1 = t2[i2].s;
+            if (tr[i2_1] > mb) {
+              dt += cst - (1 << mbt - tr[i2_1]);
+              tr[i2_1] = mb;
+            } else
+              break;
+          }
+          dt >>= lft;
+          while (dt > 0) {
+            var i2_2 = t2[i2].s;
+            if (tr[i2_2] < mb)
+              dt -= 1 << mb - tr[i2_2]++ - 1;
+            else
+              ++i2;
+          }
+          for (; i2 >= 0 && dt; --i2) {
+            var i2_3 = t2[i2].s;
+            if (tr[i2_3] == mb) {
+              --tr[i2_3];
+              ++dt;
+            }
+          }
+          mbt = mb;
+        }
+        return { t: new u8(tr), l: mbt };
+      };
+      var ln = function(n, l, d) {
+        return n.s == -1 ? Math.max(ln(n.l, l, d + 1), ln(n.r, l, d + 1)) : l[n.s] = d;
+      };
+      var lc = function(c) {
+        var s = c.length;
+        while (s && !c[--s])
+          ;
+        var cl = new u16(++s);
+        var cli = 0, cln = c[0], cls = 1;
+        var w = function(v) {
+          cl[cli++] = v;
+        };
+        for (var i2 = 1; i2 <= s; ++i2) {
+          if (c[i2] == cln && i2 != s)
+            ++cls;
+          else {
+            if (!cln && cls > 2) {
+              for (; cls > 138; cls -= 138)
+                w(32754);
+              if (cls > 2) {
+                w(cls > 10 ? cls - 11 << 5 | 28690 : cls - 3 << 5 | 12305);
+                cls = 0;
+              }
+            } else if (cls > 3) {
+              w(cln), --cls;
+              for (; cls > 6; cls -= 6)
+                w(8304);
+              if (cls > 2)
+                w(cls - 3 << 5 | 8208), cls = 0;
+            }
+            while (cls--)
+              w(cln);
+            cls = 1;
+            cln = c[i2];
+          }
+        }
+        return { c: cl.subarray(0, cli), n: s };
+      };
+      var clen = function(cf, cl) {
+        var l = 0;
+        for (var i2 = 0; i2 < cl.length; ++i2)
+          l += cf[i2] * cl[i2];
+        return l;
+      };
+      var wfblk = function(out, pos, dat) {
+        var s = dat.length;
+        var o = shft(pos + 2);
+        out[o] = s & 255;
+        out[o + 1] = s >> 8;
+        out[o + 2] = out[o] ^ 255;
+        out[o + 3] = out[o + 1] ^ 255;
+        for (var i2 = 0; i2 < s; ++i2)
+          out[o + i2 + 4] = dat[i2];
+        return (o + 4 + s) * 8;
+      };
+      var wblk = function(dat, out, final, syms, lf, df, eb, li, bs, bl, p) {
+        wbits(out, p++, final);
+        ++lf[256];
+        var _a2 = hTree(lf, 15), dlt = _a2.t, mlb = _a2.l;
+        var _b2 = hTree(df, 15), ddt = _b2.t, mdb = _b2.l;
+        var _c = lc(dlt), lclt = _c.c, nlc = _c.n;
+        var _d = lc(ddt), lcdt = _d.c, ndc = _d.n;
+        var lcfreq = new u16(19);
+        for (var i2 = 0; i2 < lclt.length; ++i2)
+          ++lcfreq[lclt[i2] & 31];
+        for (var i2 = 0; i2 < lcdt.length; ++i2)
+          ++lcfreq[lcdt[i2] & 31];
+        var _e = hTree(lcfreq, 7), lct = _e.t, mlcb = _e.l;
+        var nlcc = 19;
+        for (; nlcc > 4 && !lct[clim[nlcc - 1]]; --nlcc)
+          ;
+        var flen = bl + 5 << 3;
+        var ftlen = clen(lf, flt) + clen(df, fdt) + eb;
+        var dtlen = clen(lf, dlt) + clen(df, ddt) + eb + 14 + 3 * nlcc + clen(lcfreq, lct) + 2 * lcfreq[16] + 3 * lcfreq[17] + 7 * lcfreq[18];
+        if (bs >= 0 && flen <= ftlen && flen <= dtlen)
+          return wfblk(out, p, dat.subarray(bs, bs + bl));
+        var lm, ll, dm, dl;
+        wbits(out, p, 1 + (dtlen < ftlen)), p += 2;
+        if (dtlen < ftlen) {
+          lm = hMap(dlt, mlb, 0), ll = dlt, dm = hMap(ddt, mdb, 0), dl = ddt;
+          var llm = hMap(lct, mlcb, 0);
+          wbits(out, p, nlc - 257);
+          wbits(out, p + 5, ndc - 1);
+          wbits(out, p + 10, nlcc - 4);
+          p += 14;
+          for (var i2 = 0; i2 < nlcc; ++i2)
+            wbits(out, p + 3 * i2, lct[clim[i2]]);
+          p += 3 * nlcc;
+          var lcts = [lclt, lcdt];
+          for (var it = 0; it < 2; ++it) {
+            var clct = lcts[it];
+            for (var i2 = 0; i2 < clct.length; ++i2) {
+              var len = clct[i2] & 31;
+              wbits(out, p, llm[len]), p += lct[len];
+              if (len > 15)
+                wbits(out, p, clct[i2] >> 5 & 127), p += clct[i2] >> 12;
+            }
+          }
+        } else {
+          lm = flm, ll = flt, dm = fdm, dl = fdt;
+        }
+        for (var i2 = 0; i2 < li; ++i2) {
+          var sym = syms[i2];
+          if (sym > 255) {
+            var len = sym >> 18 & 31;
+            wbits16(out, p, lm[len + 257]), p += ll[len + 257];
+            if (len > 7)
+              wbits(out, p, sym >> 23 & 31), p += fleb[len];
+            var dst = sym & 31;
+            wbits16(out, p, dm[dst]), p += dl[dst];
+            if (dst > 3)
+              wbits16(out, p, sym >> 5 & 8191), p += fdeb[dst];
+          } else {
+            wbits16(out, p, lm[sym]), p += ll[sym];
+          }
+        }
+        wbits16(out, p, lm[256]);
+        return p + ll[256];
+      };
+      var deo = /* @__PURE__ */ new i32([65540, 131080, 131088, 131104, 262176, 1048704, 1048832, 2114560, 2117632]);
+      var et = /* @__PURE__ */ new u8(0);
+      var dflt = function(dat, lvl, plvl, pre, post, st) {
+        var s = st.z || dat.length;
+        var o = new u8(pre + s + 5 * (1 + Math.ceil(s / 7e3)) + post);
+        var w = o.subarray(pre, o.length - post);
+        var lst = st.l;
+        var pos = (st.r || 0) & 7;
+        if (lvl) {
+          if (pos)
+            w[0] = st.r >> 3;
+          var opt = deo[lvl - 1];
+          var n = opt >> 13, c = opt & 8191;
+          var msk_1 = (1 << plvl) - 1;
+          var prev = st.p || new u16(32768), head = st.h || new u16(msk_1 + 1);
+          var bs1_1 = Math.ceil(plvl / 3), bs2_1 = 2 * bs1_1;
+          var hsh = function(i3) {
+            return (dat[i3] ^ dat[i3 + 1] << bs1_1 ^ dat[i3 + 2] << bs2_1) & msk_1;
+          };
+          var syms = new i32(25e3);
+          var lf = new u16(288), df = new u16(32);
+          var lc_1 = 0, eb = 0, i2 = st.i || 0, li = 0, wi = st.w || 0, bs = 0;
+          for (; i2 + 2 < s; ++i2) {
+            var hv = hsh(i2);
+            var imod = i2 & 32767, pimod = head[hv];
+            prev[imod] = pimod;
+            head[hv] = imod;
+            if (wi <= i2) {
+              var rem = s - i2;
+              if ((lc_1 > 7e3 || li > 24576) && (rem > 423 || !lst)) {
+                pos = wblk(dat, w, 0, syms, lf, df, eb, li, bs, i2 - bs, pos);
+                li = lc_1 = eb = 0, bs = i2;
+                for (var j = 0; j < 286; ++j)
+                  lf[j] = 0;
+                for (var j = 0; j < 30; ++j)
+                  df[j] = 0;
+              }
+              var l = 2, d = 0, ch_1 = c, dif = imod - pimod & 32767;
+              if (rem > 2 && hv == hsh(i2 - dif)) {
+                var maxn = Math.min(n, rem) - 1;
+                var maxd = Math.min(32767, i2);
+                var ml = Math.min(258, rem);
+                while (dif <= maxd && --ch_1 && imod != pimod) {
+                  if (dat[i2 + l] == dat[i2 + l - dif]) {
+                    var nl = 0;
+                    for (; nl < ml && dat[i2 + nl] == dat[i2 + nl - dif]; ++nl)
+                      ;
+                    if (nl > l) {
+                      l = nl, d = dif;
+                      if (nl > maxn)
+                        break;
+                      var mmd = Math.min(dif, nl - 2);
+                      var md = 0;
+                      for (var j = 0; j < mmd; ++j) {
+                        var ti = i2 - dif + j & 32767;
+                        var pti = prev[ti];
+                        var cd = ti - pti & 32767;
+                        if (cd > md)
+                          md = cd, pimod = ti;
+                      }
+                    }
+                  }
+                  imod = pimod, pimod = prev[imod];
+                  dif += imod - pimod & 32767;
+                }
+              }
+              if (d) {
+                syms[li++] = 268435456 | revfl[l] << 18 | revfd[d];
+                var lin = revfl[l] & 31, din = revfd[d] & 31;
+                eb += fleb[lin] + fdeb[din];
+                ++lf[257 + lin];
+                ++df[din];
+                wi = i2 + l;
+                ++lc_1;
+              } else {
+                syms[li++] = dat[i2];
+                ++lf[dat[i2]];
+              }
+            }
+          }
+          for (i2 = Math.max(i2, wi); i2 < s; ++i2) {
+            syms[li++] = dat[i2];
+            ++lf[dat[i2]];
+          }
+          pos = wblk(dat, w, lst, syms, lf, df, eb, li, bs, i2 - bs, pos);
+          if (!lst) {
+            st.r = pos & 7 | w[pos / 8 | 0] << 3;
+            pos -= 7;
+            st.h = head, st.p = prev, st.i = i2, st.w = wi;
+          }
+        } else {
+          for (var i2 = st.w || 0; i2 < s + lst; i2 += 65535) {
+            var e = i2 + 65535;
+            if (e >= s) {
+              w[pos / 8 | 0] = lst;
+              e = s;
+            }
+            pos = wfblk(w, pos + 1, dat.subarray(i2, e));
+          }
+          st.i = s;
+        }
+        return slc(o, 0, pre + shft(pos) + post);
+      };
+      var crct = /* @__PURE__ */ (function() {
+        var t = new Int32Array(256);
+        for (var i2 = 0; i2 < 256; ++i2) {
+          var c = i2, k = 9;
+          while (--k)
+            c = (c & 1 && -306674912) ^ c >>> 1;
+          t[i2] = c;
+        }
+        return t;
+      })();
+      var crc = function() {
+        var c = -1;
+        return {
+          p: function(d) {
+            var cr = c;
+            for (var i2 = 0; i2 < d.length; ++i2)
+              cr = crct[cr & 255 ^ d[i2]] ^ cr >>> 8;
+            c = cr;
+          },
+          d: function() {
+            return ~c;
+          }
+        };
+      };
+      var adler = function() {
+        var a = 1, b = 0;
+        return {
+          p: function(d) {
+            var n = a, m = b;
+            var l = d.length | 0;
+            for (var i2 = 0; i2 != l; ) {
+              var e = Math.min(i2 + 2655, l);
+              for (; i2 < e; ++i2)
+                m += n += d[i2];
+              n = (n & 65535) + 15 * (n >> 16), m = (m & 65535) + 15 * (m >> 16);
+            }
+            a = n, b = m;
+          },
+          d: function() {
+            a %= 65521, b %= 65521;
+            return (a & 255) << 24 | (a & 65280) << 8 | (b & 255) << 8 | b >> 8;
+          }
+        };
+      };
+      var dopt = function(dat, opt, pre, post, st) {
+        if (!st) {
+          st = { l: 1 };
+          if (opt.dictionary) {
+            var dict = opt.dictionary.subarray(-32768);
+            var newDat = new u8(dict.length + dat.length);
+            newDat.set(dict);
+            newDat.set(dat, dict.length);
+            dat = newDat;
+            st.w = dict.length;
+          }
+        }
+        return dflt(dat, opt.level == null ? 6 : opt.level, opt.mem == null ? st.l ? Math.ceil(Math.max(8, Math.min(13, Math.log(dat.length))) * 1.5) : 20 : 12 + opt.mem, pre, post, st);
+      };
+      var mrg = function(a, b) {
+        var o = {};
+        for (var k in a)
+          o[k] = a[k];
+        for (var k in b)
+          o[k] = b[k];
+        return o;
+      };
+      var wcln = function(fn, fnStr, td2) {
+        var dt = fn();
+        var st = fn.toString();
+        var ks = st.slice(st.indexOf("[") + 1, st.lastIndexOf("]")).replace(/\s+/g, "").split(",");
+        for (var i2 = 0; i2 < dt.length; ++i2) {
+          var v = dt[i2], k = ks[i2];
+          if (typeof v == "function") {
+            fnStr += ";" + k + "=";
+            var st_1 = v.toString();
+            if (v.prototype) {
+              if (st_1.indexOf("[native code]") != -1) {
+                var spInd = st_1.indexOf(" ", 8) + 1;
+                fnStr += st_1.slice(spInd, st_1.indexOf("(", spInd));
+              } else {
+                fnStr += st_1;
+                for (var t in v.prototype)
+                  fnStr += ";" + k + ".prototype." + t + "=" + v.prototype[t].toString();
+              }
+            } else
+              fnStr += st_1;
+          } else
+            td2[k] = v;
+        }
+        return fnStr;
+      };
+      var ch = [];
+      var cbfs = function(v) {
+        var tl = [];
+        for (var k in v) {
+          if (v[k].buffer) {
+            tl.push((v[k] = new v[k].constructor(v[k])).buffer);
+          }
+        }
+        return tl;
+      };
+      var wrkr = function(fns, init, id, cb) {
+        if (!ch[id]) {
+          var fnStr = "", td_1 = {}, m = fns.length - 1;
+          for (var i2 = 0; i2 < m; ++i2)
+            fnStr = wcln(fns[i2], fnStr, td_1);
+          ch[id] = { c: wcln(fns[m], fnStr, td_1), e: td_1 };
+        }
+        var td2 = mrg({}, ch[id].e);
+        return (0, node_worker_1.default)(ch[id].c + ";onmessage=function(e){for(var k in e.data)self[k]=e.data[k];onmessage=" + init.toString() + "}", id, td2, cbfs(td2), cb);
+      };
+      var bInflt = function() {
+        return [u8, u16, i32, fleb, fdeb, clim, fl, fd, flrm, fdrm, rev, ec, hMap, max, bits, bits16, shft, slc, err, inflt, inflateSync, pbf, gopt];
+      };
+      var bDflt = function() {
+        return [u8, u16, i32, fleb, fdeb, clim, revfl, revfd, flm, flt, fdm, fdt, rev, deo, et, hMap, wbits, wbits16, hTree, ln, lc, clen, wfblk, wblk, shft, slc, dflt, dopt, deflateSync, pbf];
+      };
+      var gze = function() {
+        return [gzh, gzhl, wbytes, crc, crct];
+      };
+      var guze = function() {
+        return [gzs, gzl];
+      };
+      var zle = function() {
+        return [zlh, wbytes, adler];
+      };
+      var zule = function() {
+        return [zls];
+      };
+      var pbf = function(msg) {
+        return postMessage(msg, [msg.buffer]);
+      };
+      var gopt = function(o) {
+        return o && {
+          out: o.size && new u8(o.size),
+          dictionary: o.dictionary
+        };
+      };
+      var cbify = function(dat, opts, fns, init, id, cb) {
+        var w = wrkr(fns, init, id, function(err2, dat2) {
+          w.terminate();
+          cb(err2, dat2);
+        });
+        w.postMessage([dat, opts], opts.consume ? [dat.buffer] : []);
+        return function() {
+          w.terminate();
+        };
+      };
+      var astrm = function(strm) {
+        strm.ondata = function(dat, final) {
+          return postMessage([dat, final], [dat.buffer]);
+        };
+        return function(ev) {
+          if (ev.data.length) {
+            strm.push(ev.data[0], ev.data[1]);
+            postMessage([ev.data[0].length]);
+          } else
+            strm.flush();
+        };
+      };
+      var astrmify = function(fns, strm, opts, init, id, flush, ext) {
+        var t;
+        var w = wrkr(fns, init, id, function(err2, dat) {
+          if (err2)
+            w.terminate(), strm.ondata.call(strm, err2);
+          else if (!Array.isArray(dat))
+            ext(dat);
+          else if (dat.length == 1) {
+            strm.queuedSize -= dat[0];
+            if (strm.ondrain)
+              strm.ondrain(dat[0]);
+          } else {
+            if (dat[1])
+              w.terminate();
+            strm.ondata.call(strm, err2, dat[0], dat[1]);
+          }
+        });
+        w.postMessage(opts);
+        strm.queuedSize = 0;
+        strm.push = function(d, f) {
+          if (!strm.ondata)
+            err(5);
+          if (t)
+            strm.ondata(err(4, 0, 1), null, !!f);
+          strm.queuedSize += d.length;
+          w.postMessage([d, t = f], [d.buffer]);
+        };
+        strm.terminate = function() {
+          w.terminate();
+        };
+        if (flush) {
+          strm.flush = function() {
+            w.postMessage([]);
+          };
+        }
+      };
+      var b2 = function(d, b) {
+        return d[b] | d[b + 1] << 8;
+      };
+      var b4 = function(d, b) {
+        return (d[b] | d[b + 1] << 8 | d[b + 2] << 16 | d[b + 3] << 24) >>> 0;
+      };
+      var b8 = function(d, b) {
+        return b4(d, b) + b4(d, b + 4) * 4294967296;
+      };
+      var wbytes = function(d, b, v) {
+        for (; v; ++b)
+          d[b] = v, v >>>= 8;
+      };
+      var gzh = function(c, o) {
+        var fn = o.filename;
+        c[0] = 31, c[1] = 139, c[2] = 8, c[8] = o.level < 2 ? 4 : o.level == 9 ? 2 : 0, c[9] = 3;
+        if (o.mtime != 0)
+          wbytes(c, 4, Math.floor(new Date(o.mtime || Date.now()) / 1e3));
+        if (fn) {
+          c[3] = 8;
+          for (var i2 = 0; i2 <= fn.length; ++i2)
+            c[i2 + 10] = fn.charCodeAt(i2);
+        }
+      };
+      var gzs = function(d) {
+        if (d[0] != 31 || d[1] != 139 || d[2] != 8)
+          err(6, "invalid gzip data");
+        var flg = d[3];
+        var st = 10;
+        if (flg & 4)
+          st += (d[10] | d[11] << 8) + 2;
+        for (var zs = (flg >> 3 & 1) + (flg >> 4 & 1); zs > 0; zs -= !d[st++])
+          ;
+        return st + (flg & 2);
+      };
+      var gzl = function(d) {
+        var l = d.length;
+        return (d[l - 4] | d[l - 3] << 8 | d[l - 2] << 16 | d[l - 1] << 24) >>> 0;
+      };
+      var gzhl = function(o) {
+        return 10 + (o.filename ? o.filename.length + 1 : 0);
+      };
+      var zlh = function(c, o) {
+        var lv = o.level, fl2 = lv == 0 ? 0 : lv < 6 ? 1 : lv == 9 ? 3 : 2;
+        c[0] = 120, c[1] = fl2 << 6 | (o.dictionary && 32);
+        c[1] |= 31 - (c[0] << 8 | c[1]) % 31;
+        if (o.dictionary) {
+          var h = adler();
+          h.p(o.dictionary);
+          wbytes(c, 2, h.d());
+        }
+      };
+      var zls = function(d, dict) {
+        if ((d[0] & 15) != 8 || d[0] >> 4 > 7 || (d[0] << 8 | d[1]) % 31)
+          err(6, "invalid zlib data");
+        if ((d[1] >> 5 & 1) == +!dict)
+          err(6, "invalid zlib data: " + (d[1] & 32 ? "need" : "unexpected") + " dictionary");
+        return (d[1] >> 3 & 4) + 2;
+      };
+      function StrmOpt(opts, cb) {
+        if (typeof opts == "function")
+          cb = opts, opts = {};
+        this.ondata = cb;
+        return opts;
+      }
+      var Deflate = /* @__PURE__ */ (function() {
+        function Deflate2(opts, cb) {
+          if (typeof opts == "function")
+            cb = opts, opts = {};
+          this.ondata = cb;
+          this.o = opts || {};
+          this.s = { l: 0, i: 32768, w: 32768, z: 32768 };
+          this.b = new u8(98304);
+          if (this.o.dictionary) {
+            var dict = this.o.dictionary.subarray(-32768);
+            this.b.set(dict, 32768 - dict.length);
+            this.s.i = 32768 - dict.length;
+          }
+        }
+        Deflate2.prototype.p = function(c, f) {
+          this.ondata(dopt(c, this.o, 0, 0, this.s), f);
+        };
+        Deflate2.prototype.push = function(chunk, final) {
+          if (!this.ondata)
+            err(5);
+          if (this.s.l)
+            err(4);
+          var endLen = chunk.length + this.s.z;
+          if (endLen > this.b.length) {
+            if (endLen > 2 * this.b.length - 32768) {
+              var newBuf = new u8(endLen & -32768);
+              newBuf.set(this.b.subarray(0, this.s.z));
+              this.b = newBuf;
+            }
+            var split = this.b.length - this.s.z;
+            this.b.set(chunk.subarray(0, split), this.s.z);
+            this.s.z = this.b.length;
+            this.p(this.b, false);
+            this.b.set(this.b.subarray(-32768));
+            this.b.set(chunk.subarray(split), 32768);
+            this.s.z = chunk.length - split + 32768;
+            this.s.i = 32766, this.s.w = 32768;
+          } else {
+            this.b.set(chunk, this.s.z);
+            this.s.z += chunk.length;
+          }
+          this.s.l = final & 1;
+          if (this.s.z > this.s.w + 8191 || final) {
+            this.p(this.b, final || false);
+            this.s.w = this.s.i, this.s.i -= 2;
+          }
+        };
+        Deflate2.prototype.flush = function() {
+          if (!this.ondata)
+            err(5);
+          if (this.s.l)
+            err(4);
+          this.p(this.b, false);
+          this.s.w = this.s.i, this.s.i -= 2;
+        };
+        return Deflate2;
+      })();
+      exports.Deflate = Deflate;
+      var AsyncDeflate = /* @__PURE__ */ (function() {
+        function AsyncDeflate2(opts, cb) {
+          astrmify([
+            bDflt,
+            function() {
+              return [astrm, Deflate];
+            }
+          ], this, StrmOpt.call(this, opts, cb), function(ev) {
+            var strm = new Deflate(ev.data);
+            onmessage = astrm(strm);
+          }, 6, 1);
+        }
+        return AsyncDeflate2;
+      })();
+      exports.AsyncDeflate = AsyncDeflate;
+      function deflate(data, opts, cb) {
+        if (!cb)
+          cb = opts, opts = {};
+        if (typeof cb != "function")
+          err(7);
+        return cbify(data, opts, [
+          bDflt
+        ], function(ev) {
+          return pbf(deflateSync(ev.data[0], ev.data[1]));
+        }, 0, cb);
+      }
+      exports.deflate = deflate;
+      function deflateSync(data, opts) {
+        return dopt(data, opts || {}, 0, 0);
+      }
+      exports.deflateSync = deflateSync;
+      var Inflate = /* @__PURE__ */ (function() {
+        function Inflate2(opts, cb) {
+          if (typeof opts == "function")
+            cb = opts, opts = {};
+          this.ondata = cb;
+          var dict = opts && opts.dictionary && opts.dictionary.subarray(-32768);
+          this.s = { i: 0, b: dict ? dict.length : 0 };
+          this.o = new u8(32768);
+          this.p = new u8(0);
+          if (dict)
+            this.o.set(dict);
+        }
+        Inflate2.prototype.e = function(c) {
+          if (!this.ondata)
+            err(5);
+          if (this.d)
+            err(4);
+          if (!this.p.length)
+            this.p = c;
+          else if (c.length) {
+            var n = new u8(this.p.length + c.length);
+            n.set(this.p), n.set(c, this.p.length), this.p = n;
+          }
+        };
+        Inflate2.prototype.c = function(final) {
+          this.s.i = +(this.d = final || false);
+          var bts = this.s.b;
+          var dt = inflt(this.p, this.s, this.o);
+          this.ondata(slc(dt, bts, this.s.b), this.d);
+          this.o = slc(dt, this.s.b - 32768), this.s.b = this.o.length;
+          this.p = slc(this.p, this.s.p / 8 | 0), this.s.p &= 7;
+        };
+        Inflate2.prototype.push = function(chunk, final) {
+          this.e(chunk), this.c(final);
+        };
+        return Inflate2;
+      })();
+      exports.Inflate = Inflate;
+      var AsyncInflate = /* @__PURE__ */ (function() {
+        function AsyncInflate2(opts, cb) {
+          astrmify([
+            bInflt,
+            function() {
+              return [astrm, Inflate];
+            }
+          ], this, StrmOpt.call(this, opts, cb), function(ev) {
+            var strm = new Inflate(ev.data);
+            onmessage = astrm(strm);
+          }, 7, 0);
+        }
+        return AsyncInflate2;
+      })();
+      exports.AsyncInflate = AsyncInflate;
+      function inflate(data, opts, cb) {
+        if (!cb)
+          cb = opts, opts = {};
+        if (typeof cb != "function")
+          err(7);
+        return cbify(data, opts, [
+          bInflt
+        ], function(ev) {
+          return pbf(inflateSync(ev.data[0], gopt(ev.data[1])));
+        }, 1, cb);
+      }
+      exports.inflate = inflate;
+      function inflateSync(data, opts) {
+        return inflt(data, { i: 2 }, opts && opts.out, opts && opts.dictionary);
+      }
+      exports.inflateSync = inflateSync;
+      var Gzip = /* @__PURE__ */ (function() {
+        function Gzip2(opts, cb) {
+          this.c = crc();
+          this.l = 0;
+          this.v = 1;
+          Deflate.call(this, opts, cb);
+        }
+        Gzip2.prototype.push = function(chunk, final) {
+          this.c.p(chunk);
+          this.l += chunk.length;
+          Deflate.prototype.push.call(this, chunk, final);
+        };
+        Gzip2.prototype.p = function(c, f) {
+          var raw = dopt(c, this.o, this.v && gzhl(this.o), f && 8, this.s);
+          if (this.v)
+            gzh(raw, this.o), this.v = 0;
+          if (f)
+            wbytes(raw, raw.length - 8, this.c.d()), wbytes(raw, raw.length - 4, this.l);
+          this.ondata(raw, f);
+        };
+        Gzip2.prototype.flush = function() {
+          Deflate.prototype.flush.call(this);
+        };
+        return Gzip2;
+      })();
+      exports.Gzip = Gzip;
+      exports.Compress = Gzip;
+      var AsyncGzip = /* @__PURE__ */ (function() {
+        function AsyncGzip2(opts, cb) {
+          astrmify([
+            bDflt,
+            gze,
+            function() {
+              return [astrm, Deflate, Gzip];
+            }
+          ], this, StrmOpt.call(this, opts, cb), function(ev) {
+            var strm = new Gzip(ev.data);
+            onmessage = astrm(strm);
+          }, 8, 1);
+        }
+        return AsyncGzip2;
+      })();
+      exports.AsyncGzip = AsyncGzip;
+      exports.AsyncCompress = AsyncGzip;
+      function gzip(data, opts, cb) {
+        if (!cb)
+          cb = opts, opts = {};
+        if (typeof cb != "function")
+          err(7);
+        return cbify(data, opts, [
+          bDflt,
+          gze,
+          function() {
+            return [gzipSync];
+          }
+        ], function(ev) {
+          return pbf(gzipSync(ev.data[0], ev.data[1]));
+        }, 2, cb);
+      }
+      exports.gzip = gzip;
+      exports.compress = gzip;
+      function gzipSync(data, opts) {
+        if (!opts)
+          opts = {};
+        var c = crc(), l = data.length;
+        c.p(data);
+        var d = dopt(data, opts, gzhl(opts), 8), s = d.length;
+        return gzh(d, opts), wbytes(d, s - 8, c.d()), wbytes(d, s - 4, l), d;
+      }
+      exports.gzipSync = gzipSync;
+      exports.compressSync = gzipSync;
+      var Gunzip = /* @__PURE__ */ (function() {
+        function Gunzip2(opts, cb) {
+          this.v = 1;
+          this.r = 0;
+          Inflate.call(this, opts, cb);
+        }
+        Gunzip2.prototype.push = function(chunk, final) {
+          Inflate.prototype.e.call(this, chunk);
+          this.r += chunk.length;
+          if (this.v) {
+            var p = this.p.subarray(this.v - 1);
+            var s = p.length > 3 ? gzs(p) : 4;
+            if (s > p.length) {
+              if (!final)
+                return;
+            } else if (this.v > 1 && this.onmember) {
+              this.onmember(this.r - p.length);
+            }
+            this.p = p.subarray(s), this.v = 0;
+          }
+          Inflate.prototype.c.call(this, final);
+          if (this.s.f && !this.s.l && !final) {
+            this.v = shft(this.s.p) + 9;
+            this.s = { i: 0 };
+            this.o = new u8(0);
+            this.push(new u8(0), final);
+          }
+        };
+        return Gunzip2;
+      })();
+      exports.Gunzip = Gunzip;
+      var AsyncGunzip = /* @__PURE__ */ (function() {
+        function AsyncGunzip2(opts, cb) {
+          var _this = this;
+          astrmify([
+            bInflt,
+            guze,
+            function() {
+              return [astrm, Inflate, Gunzip];
+            }
+          ], this, StrmOpt.call(this, opts, cb), function(ev) {
+            var strm = new Gunzip(ev.data);
+            strm.onmember = function(offset) {
+              return postMessage(offset);
+            };
+            onmessage = astrm(strm);
+          }, 9, 0, function(offset) {
+            return _this.onmember && _this.onmember(offset);
+          });
+        }
+        return AsyncGunzip2;
+      })();
+      exports.AsyncGunzip = AsyncGunzip;
+      function gunzip(data, opts, cb) {
+        if (!cb)
+          cb = opts, opts = {};
+        if (typeof cb != "function")
+          err(7);
+        return cbify(data, opts, [
+          bInflt,
+          guze,
+          function() {
+            return [gunzipSync];
+          }
+        ], function(ev) {
+          return pbf(gunzipSync(ev.data[0], ev.data[1]));
+        }, 3, cb);
+      }
+      exports.gunzip = gunzip;
+      function gunzipSync(data, opts) {
+        var st = gzs(data);
+        if (st + 8 > data.length)
+          err(6, "invalid gzip data");
+        return inflt(data.subarray(st, -8), { i: 2 }, opts && opts.out || new u8(gzl(data)), opts && opts.dictionary);
+      }
+      exports.gunzipSync = gunzipSync;
+      var Zlib = /* @__PURE__ */ (function() {
+        function Zlib2(opts, cb) {
+          this.c = adler();
+          this.v = 1;
+          Deflate.call(this, opts, cb);
+        }
+        Zlib2.prototype.push = function(chunk, final) {
+          this.c.p(chunk);
+          Deflate.prototype.push.call(this, chunk, final);
+        };
+        Zlib2.prototype.p = function(c, f) {
+          var raw = dopt(c, this.o, this.v && (this.o.dictionary ? 6 : 2), f && 4, this.s);
+          if (this.v)
+            zlh(raw, this.o), this.v = 0;
+          if (f)
+            wbytes(raw, raw.length - 4, this.c.d());
+          this.ondata(raw, f);
+        };
+        Zlib2.prototype.flush = function() {
+          Deflate.prototype.flush.call(this);
+        };
+        return Zlib2;
+      })();
+      exports.Zlib = Zlib;
+      var AsyncZlib = /* @__PURE__ */ (function() {
+        function AsyncZlib2(opts, cb) {
+          astrmify([
+            bDflt,
+            zle,
+            function() {
+              return [astrm, Deflate, Zlib];
+            }
+          ], this, StrmOpt.call(this, opts, cb), function(ev) {
+            var strm = new Zlib(ev.data);
+            onmessage = astrm(strm);
+          }, 10, 1);
+        }
+        return AsyncZlib2;
+      })();
+      exports.AsyncZlib = AsyncZlib;
+      function zlib(data, opts, cb) {
+        if (!cb)
+          cb = opts, opts = {};
+        if (typeof cb != "function")
+          err(7);
+        return cbify(data, opts, [
+          bDflt,
+          zle,
+          function() {
+            return [zlibSync];
+          }
+        ], function(ev) {
+          return pbf(zlibSync(ev.data[0], ev.data[1]));
+        }, 4, cb);
+      }
+      exports.zlib = zlib;
+      function zlibSync(data, opts) {
+        if (!opts)
+          opts = {};
+        var a = adler();
+        a.p(data);
+        var d = dopt(data, opts, opts.dictionary ? 6 : 2, 4);
+        return zlh(d, opts), wbytes(d, d.length - 4, a.d()), d;
+      }
+      exports.zlibSync = zlibSync;
+      var Unzlib = /* @__PURE__ */ (function() {
+        function Unzlib2(opts, cb) {
+          Inflate.call(this, opts, cb);
+          this.v = opts && opts.dictionary ? 2 : 1;
+        }
+        Unzlib2.prototype.push = function(chunk, final) {
+          Inflate.prototype.e.call(this, chunk);
+          if (this.v) {
+            if (this.p.length < 6 && !final)
+              return;
+            this.p = this.p.subarray(zls(this.p, this.v - 1)), this.v = 0;
+          }
+          if (final) {
+            if (this.p.length < 4)
+              err(6, "invalid zlib data");
+            this.p = this.p.subarray(0, -4);
+          }
+          Inflate.prototype.c.call(this, final);
+        };
+        return Unzlib2;
+      })();
+      exports.Unzlib = Unzlib;
+      var AsyncUnzlib = /* @__PURE__ */ (function() {
+        function AsyncUnzlib2(opts, cb) {
+          astrmify([
+            bInflt,
+            zule,
+            function() {
+              return [astrm, Inflate, Unzlib];
+            }
+          ], this, StrmOpt.call(this, opts, cb), function(ev) {
+            var strm = new Unzlib(ev.data);
+            onmessage = astrm(strm);
+          }, 11, 0);
+        }
+        return AsyncUnzlib2;
+      })();
+      exports.AsyncUnzlib = AsyncUnzlib;
+      function unzlib(data, opts, cb) {
+        if (!cb)
+          cb = opts, opts = {};
+        if (typeof cb != "function")
+          err(7);
+        return cbify(data, opts, [
+          bInflt,
+          zule,
+          function() {
+            return [unzlibSync];
+          }
+        ], function(ev) {
+          return pbf(unzlibSync(ev.data[0], gopt(ev.data[1])));
+        }, 5, cb);
+      }
+      exports.unzlib = unzlib;
+      function unzlibSync(data, opts) {
+        return inflt(data.subarray(zls(data, opts && opts.dictionary), -4), { i: 2 }, opts && opts.out, opts && opts.dictionary);
+      }
+      exports.unzlibSync = unzlibSync;
+      var Decompress = /* @__PURE__ */ (function() {
+        function Decompress2(opts, cb) {
+          this.o = StrmOpt.call(this, opts, cb) || {};
+          this.G = Gunzip;
+          this.I = Inflate;
+          this.Z = Unzlib;
+        }
+        Decompress2.prototype.i = function() {
+          var _this = this;
+          this.s.ondata = function(dat, final) {
+            _this.ondata(dat, final);
+          };
+        };
+        Decompress2.prototype.push = function(chunk, final) {
+          if (!this.ondata)
+            err(5);
+          if (!this.s) {
+            if (this.p && this.p.length) {
+              var n = new u8(this.p.length + chunk.length);
+              n.set(this.p), n.set(chunk, this.p.length);
+            } else
+              this.p = chunk;
+            if (this.p.length > 2) {
+              this.s = this.p[0] == 31 && this.p[1] == 139 && this.p[2] == 8 ? new this.G(this.o) : (this.p[0] & 15) != 8 || this.p[0] >> 4 > 7 || (this.p[0] << 8 | this.p[1]) % 31 ? new this.I(this.o) : new this.Z(this.o);
+              this.i();
+              this.s.push(this.p, final);
+              this.p = null;
+            }
+          } else
+            this.s.push(chunk, final);
+        };
+        return Decompress2;
+      })();
+      exports.Decompress = Decompress;
+      var AsyncDecompress = /* @__PURE__ */ (function() {
+        function AsyncDecompress2(opts, cb) {
+          Decompress.call(this, opts, cb);
+          this.queuedSize = 0;
+          this.G = AsyncGunzip;
+          this.I = AsyncInflate;
+          this.Z = AsyncUnzlib;
+        }
+        AsyncDecompress2.prototype.i = function() {
+          var _this = this;
+          this.s.ondata = function(err2, dat, final) {
+            _this.ondata(err2, dat, final);
+          };
+          this.s.ondrain = function(size) {
+            _this.queuedSize -= size;
+            if (_this.ondrain)
+              _this.ondrain(size);
+          };
+        };
+        AsyncDecompress2.prototype.push = function(chunk, final) {
+          this.queuedSize += chunk.length;
+          Decompress.prototype.push.call(this, chunk, final);
+        };
+        return AsyncDecompress2;
+      })();
+      exports.AsyncDecompress = AsyncDecompress;
+      function decompress(data, opts, cb) {
+        if (!cb)
+          cb = opts, opts = {};
+        if (typeof cb != "function")
+          err(7);
+        return data[0] == 31 && data[1] == 139 && data[2] == 8 ? gunzip(data, opts, cb) : (data[0] & 15) != 8 || data[0] >> 4 > 7 || (data[0] << 8 | data[1]) % 31 ? inflate(data, opts, cb) : unzlib(data, opts, cb);
+      }
+      exports.decompress = decompress;
+      function decompressSync(data, opts) {
+        return data[0] == 31 && data[1] == 139 && data[2] == 8 ? gunzipSync(data, opts) : (data[0] & 15) != 8 || data[0] >> 4 > 7 || (data[0] << 8 | data[1]) % 31 ? inflateSync(data, opts) : unzlibSync(data, opts);
+      }
+      exports.decompressSync = decompressSync;
+      var fltn = function(d, p, t, o) {
+        for (var k in d) {
+          var val = d[k], n = p + k, op = o;
+          if (Array.isArray(val))
+            op = mrg(o, val[1]), val = val[0];
+          if (val instanceof u8)
+            t[n] = [val, op];
+          else {
+            t[n += "/"] = [new u8(0), op];
+            fltn(val, n, t, o);
+          }
+        }
+      };
+      var te = typeof TextEncoder != "undefined" && /* @__PURE__ */ new TextEncoder();
+      var td = typeof TextDecoder != "undefined" && /* @__PURE__ */ new TextDecoder();
+      var tds = 0;
+      try {
+        td.decode(et, { stream: true });
+        tds = 1;
+      } catch (e) {
+      }
+      var dutf8 = function(d) {
+        for (var r = "", i2 = 0; ; ) {
+          var c = d[i2++];
+          var eb = (c > 127) + (c > 223) + (c > 239);
+          if (i2 + eb > d.length)
+            return { s: r, r: slc(d, i2 - 1) };
+          if (!eb)
+            r += String.fromCharCode(c);
+          else if (eb == 3) {
+            c = ((c & 15) << 18 | (d[i2++] & 63) << 12 | (d[i2++] & 63) << 6 | d[i2++] & 63) - 65536, r += String.fromCharCode(55296 | c >> 10, 56320 | c & 1023);
+          } else if (eb & 1)
+            r += String.fromCharCode((c & 31) << 6 | d[i2++] & 63);
+          else
+            r += String.fromCharCode((c & 15) << 12 | (d[i2++] & 63) << 6 | d[i2++] & 63);
+        }
+      };
+      var DecodeUTF8 = /* @__PURE__ */ (function() {
+        function DecodeUTF82(cb) {
+          this.ondata = cb;
+          if (tds)
+            this.t = new TextDecoder();
+          else
+            this.p = et;
+        }
+        DecodeUTF82.prototype.push = function(chunk, final) {
+          if (!this.ondata)
+            err(5);
+          final = !!final;
+          if (this.t) {
+            this.ondata(this.t.decode(chunk, { stream: true }), final);
+            if (final) {
+              if (this.t.decode().length)
+                err(8);
+              this.t = null;
+            }
+            return;
+          }
+          if (!this.p)
+            err(4);
+          var dat = new u8(this.p.length + chunk.length);
+          dat.set(this.p);
+          dat.set(chunk, this.p.length);
+          var _a2 = dutf8(dat), s = _a2.s, r = _a2.r;
+          if (final) {
+            if (r.length)
+              err(8);
+            this.p = null;
+          } else
+            this.p = r;
+          this.ondata(s, final);
+        };
+        return DecodeUTF82;
+      })();
+      exports.DecodeUTF8 = DecodeUTF8;
+      var EncodeUTF8 = /* @__PURE__ */ (function() {
+        function EncodeUTF82(cb) {
+          this.ondata = cb;
+        }
+        EncodeUTF82.prototype.push = function(chunk, final) {
+          if (!this.ondata)
+            err(5);
+          if (this.d)
+            err(4);
+          this.ondata(strToU8(chunk), this.d = final || false);
+        };
+        return EncodeUTF82;
+      })();
+      exports.EncodeUTF8 = EncodeUTF8;
+      function strToU8(str, latin1) {
+        if (latin1) {
+          var ar_1 = new u8(str.length);
+          for (var i2 = 0; i2 < str.length; ++i2)
+            ar_1[i2] = str.charCodeAt(i2);
+          return ar_1;
+        }
+        if (te)
+          return te.encode(str);
+        var l = str.length;
+        var ar = new u8(str.length + (str.length >> 1));
+        var ai = 0;
+        var w = function(v) {
+          ar[ai++] = v;
+        };
+        for (var i2 = 0; i2 < l; ++i2) {
+          if (ai + 5 > ar.length) {
+            var n = new u8(ai + 8 + (l - i2 << 1));
+            n.set(ar);
+            ar = n;
+          }
+          var c = str.charCodeAt(i2);
+          if (c < 128 || latin1)
+            w(c);
+          else if (c < 2048)
+            w(192 | c >> 6), w(128 | c & 63);
+          else if (c > 55295 && c < 57344)
+            c = 65536 + (c & 1023 << 10) | str.charCodeAt(++i2) & 1023, w(240 | c >> 18), w(128 | c >> 12 & 63), w(128 | c >> 6 & 63), w(128 | c & 63);
+          else
+            w(224 | c >> 12), w(128 | c >> 6 & 63), w(128 | c & 63);
+        }
+        return slc(ar, 0, ai);
+      }
+      exports.strToU8 = strToU8;
+      function strFromU8(dat, latin1) {
+        if (latin1) {
+          var r = "";
+          for (var i2 = 0; i2 < dat.length; i2 += 16384)
+            r += String.fromCharCode.apply(null, dat.subarray(i2, i2 + 16384));
+          return r;
+        } else if (td) {
+          return td.decode(dat);
+        } else {
+          var _a2 = dutf8(dat), s = _a2.s, r = _a2.r;
+          if (r.length)
+            err(8);
+          return s;
+        }
+      }
+      exports.strFromU8 = strFromU8;
+      var dbf = function(l) {
+        return l == 1 ? 3 : l < 6 ? 2 : l == 9 ? 1 : 0;
+      };
+      var slzh = function(d, b) {
+        return b + 30 + b2(d, b + 26) + b2(d, b + 28);
+      };
+      var zh = function(d, b, z) {
+        var fnl = b2(d, b + 28), fn = strFromU8(d.subarray(b + 46, b + 46 + fnl), !(b2(d, b + 8) & 2048)), es = b + 46 + fnl, bs = b4(d, b + 20);
+        var _a2 = z && bs == 4294967295 ? z64e(d, es) : [bs, b4(d, b + 24), b4(d, b + 42)], sc = _a2[0], su = _a2[1], off = _a2[2];
+        return [b2(d, b + 10), sc, su, fn, es + b2(d, b + 30) + b2(d, b + 32), off];
+      };
+      var z64e = function(d, b) {
+        for (; b2(d, b) != 1; b += 4 + b2(d, b + 2))
+          ;
+        return [b8(d, b + 12), b8(d, b + 4), b8(d, b + 20)];
+      };
+      var exfl = function(ex) {
+        var le = 0;
+        if (ex) {
+          for (var k in ex) {
+            var l = ex[k].length;
+            if (l > 65535)
+              err(9);
+            le += l + 4;
+          }
+        }
+        return le;
+      };
+      var wzh = function(d, b, f, fn, u, c, ce, co) {
+        var fl2 = fn.length, ex = f.extra, col = co && co.length;
+        var exl = exfl(ex);
+        wbytes(d, b, ce != null ? 33639248 : 67324752), b += 4;
+        if (ce != null)
+          d[b++] = 20, d[b++] = f.os;
+        d[b] = 20, b += 2;
+        d[b++] = f.flag << 1 | (c < 0 && 8), d[b++] = u && 8;
+        d[b++] = f.compression & 255, d[b++] = f.compression >> 8;
+        var dt = new Date(f.mtime == null ? Date.now() : f.mtime), y = dt.getFullYear() - 1980;
+        if (y < 0 || y > 119)
+          err(10);
+        wbytes(d, b, y << 25 | dt.getMonth() + 1 << 21 | dt.getDate() << 16 | dt.getHours() << 11 | dt.getMinutes() << 5 | dt.getSeconds() >> 1), b += 4;
+        if (c != -1) {
+          wbytes(d, b, f.crc);
+          wbytes(d, b + 4, c < 0 ? -c - 2 : c);
+          wbytes(d, b + 8, f.size);
+        }
+        wbytes(d, b + 12, fl2);
+        wbytes(d, b + 14, exl), b += 16;
+        if (ce != null) {
+          wbytes(d, b, col);
+          wbytes(d, b + 6, f.attrs);
+          wbytes(d, b + 10, ce), b += 14;
+        }
+        d.set(fn, b);
+        b += fl2;
+        if (exl) {
+          for (var k in ex) {
+            var exf = ex[k], l = exf.length;
+            wbytes(d, b, +k);
+            wbytes(d, b + 2, l);
+            d.set(exf, b + 4), b += 4 + l;
+          }
+        }
+        if (col)
+          d.set(co, b), b += col;
+        return b;
+      };
+      var wzf = function(o, b, c, d, e) {
+        wbytes(o, b, 101010256);
+        wbytes(o, b + 8, c);
+        wbytes(o, b + 10, c);
+        wbytes(o, b + 12, d);
+        wbytes(o, b + 16, e);
+      };
+      var ZipPassThrough = /* @__PURE__ */ (function() {
+        function ZipPassThrough2(filename) {
+          this.filename = filename;
+          this.c = crc();
+          this.size = 0;
+          this.compression = 0;
+        }
+        ZipPassThrough2.prototype.process = function(chunk, final) {
+          this.ondata(null, chunk, final);
+        };
+        ZipPassThrough2.prototype.push = function(chunk, final) {
+          if (!this.ondata)
+            err(5);
+          this.c.p(chunk);
+          this.size += chunk.length;
+          if (final)
+            this.crc = this.c.d();
+          this.process(chunk, final || false);
+        };
+        return ZipPassThrough2;
+      })();
+      exports.ZipPassThrough = ZipPassThrough;
+      var ZipDeflate = /* @__PURE__ */ (function() {
+        function ZipDeflate2(filename, opts) {
+          var _this = this;
+          if (!opts)
+            opts = {};
+          ZipPassThrough.call(this, filename);
+          this.d = new Deflate(opts, function(dat, final) {
+            _this.ondata(null, dat, final);
+          });
+          this.compression = 8;
+          this.flag = dbf(opts.level);
+        }
+        ZipDeflate2.prototype.process = function(chunk, final) {
+          try {
+            this.d.push(chunk, final);
+          } catch (e) {
+            this.ondata(e, null, final);
+          }
+        };
+        ZipDeflate2.prototype.push = function(chunk, final) {
+          ZipPassThrough.prototype.push.call(this, chunk, final);
+        };
+        return ZipDeflate2;
+      })();
+      exports.ZipDeflate = ZipDeflate;
+      var AsyncZipDeflate = /* @__PURE__ */ (function() {
+        function AsyncZipDeflate2(filename, opts) {
+          var _this = this;
+          if (!opts)
+            opts = {};
+          ZipPassThrough.call(this, filename);
+          this.d = new AsyncDeflate(opts, function(err2, dat, final) {
+            _this.ondata(err2, dat, final);
+          });
+          this.compression = 8;
+          this.flag = dbf(opts.level);
+          this.terminate = this.d.terminate;
+        }
+        AsyncZipDeflate2.prototype.process = function(chunk, final) {
+          this.d.push(chunk, final);
+        };
+        AsyncZipDeflate2.prototype.push = function(chunk, final) {
+          ZipPassThrough.prototype.push.call(this, chunk, final);
+        };
+        return AsyncZipDeflate2;
+      })();
+      exports.AsyncZipDeflate = AsyncZipDeflate;
+      var Zip = /* @__PURE__ */ (function() {
+        function Zip2(cb) {
+          this.ondata = cb;
+          this.u = [];
+          this.d = 1;
+        }
+        Zip2.prototype.add = function(file) {
+          var _this = this;
+          if (!this.ondata)
+            err(5);
+          if (this.d & 2)
+            this.ondata(err(4 + (this.d & 1) * 8, 0, 1), null, false);
+          else {
+            var f = strToU8(file.filename), fl_1 = f.length;
+            var com = file.comment, o = com && strToU8(com);
+            var u = fl_1 != file.filename.length || o && com.length != o.length;
+            var hl_1 = fl_1 + exfl(file.extra) + 30;
+            if (fl_1 > 65535)
+              this.ondata(err(11, 0, 1), null, false);
+            var header = new u8(hl_1);
+            wzh(header, 0, file, f, u, -1);
+            var chks_1 = [header];
+            var pAll_1 = function() {
+              for (var _i = 0, chks_2 = chks_1; _i < chks_2.length; _i++) {
+                var chk = chks_2[_i];
+                _this.ondata(null, chk, false);
+              }
+              chks_1 = [];
+            };
+            var tr_1 = this.d;
+            this.d = 0;
+            var ind_1 = this.u.length;
+            var uf_1 = mrg(file, {
+              f,
+              u,
+              o,
+              t: function() {
+                if (file.terminate)
+                  file.terminate();
+              },
+              r: function() {
+                pAll_1();
+                if (tr_1) {
+                  var nxt = _this.u[ind_1 + 1];
+                  if (nxt)
+                    nxt.r();
+                  else
+                    _this.d = 1;
+                }
+                tr_1 = 1;
+              }
+            });
+            var cl_1 = 0;
+            file.ondata = function(err2, dat, final) {
+              if (err2) {
+                _this.ondata(err2, dat, final);
+                _this.terminate();
+              } else {
+                cl_1 += dat.length;
+                chks_1.push(dat);
+                if (final) {
+                  var dd = new u8(16);
+                  wbytes(dd, 0, 134695760);
+                  wbytes(dd, 4, file.crc);
+                  wbytes(dd, 8, cl_1);
+                  wbytes(dd, 12, file.size);
+                  chks_1.push(dd);
+                  uf_1.c = cl_1, uf_1.b = hl_1 + cl_1 + 16, uf_1.crc = file.crc, uf_1.size = file.size;
+                  if (tr_1)
+                    uf_1.r();
+                  tr_1 = 1;
+                } else if (tr_1)
+                  pAll_1();
+              }
+            };
+            this.u.push(uf_1);
+          }
+        };
+        Zip2.prototype.end = function() {
+          var _this = this;
+          if (this.d & 2) {
+            this.ondata(err(4 + (this.d & 1) * 8, 0, 1), null, true);
+            return;
+          }
+          if (this.d)
+            this.e();
+          else
+            this.u.push({
+              r: function() {
+                if (!(_this.d & 1))
+                  return;
+                _this.u.splice(-1, 1);
+                _this.e();
+              },
+              t: function() {
+              }
+            });
+          this.d = 3;
+        };
+        Zip2.prototype.e = function() {
+          var bt = 0, l = 0, tl = 0;
+          for (var _i = 0, _a2 = this.u; _i < _a2.length; _i++) {
+            var f = _a2[_i];
+            tl += 46 + f.f.length + exfl(f.extra) + (f.o ? f.o.length : 0);
+          }
+          var out = new u8(tl + 22);
+          for (var _b2 = 0, _c = this.u; _b2 < _c.length; _b2++) {
+            var f = _c[_b2];
+            wzh(out, bt, f, f.f, f.u, -f.c - 2, l, f.o);
+            bt += 46 + f.f.length + exfl(f.extra) + (f.o ? f.o.length : 0), l += f.b;
+          }
+          wzf(out, bt, this.u.length, tl, l);
+          this.ondata(null, out, true);
+          this.d = 2;
+        };
+        Zip2.prototype.terminate = function() {
+          for (var _i = 0, _a2 = this.u; _i < _a2.length; _i++) {
+            var f = _a2[_i];
+            f.t();
+          }
+          this.d = 2;
+        };
+        return Zip2;
+      })();
+      exports.Zip = Zip;
+      function zip(data, opts, cb) {
+        if (!cb)
+          cb = opts, opts = {};
+        if (typeof cb != "function")
+          err(7);
+        var r = {};
+        fltn(data, "", r, opts);
+        var k = Object.keys(r);
+        var lft = k.length, o = 0, tot = 0;
+        var slft = lft, files = new Array(lft);
+        var term = [];
+        var tAll = function() {
+          for (var i3 = 0; i3 < term.length; ++i3)
+            term[i3]();
+        };
+        var cbd = function(a, b) {
+          mt(function() {
+            cb(a, b);
+          });
+        };
+        mt(function() {
+          cbd = cb;
+        });
+        var cbf = function() {
+          var out = new u8(tot + 22), oe = o, cdl = tot - o;
+          tot = 0;
+          for (var i3 = 0; i3 < slft; ++i3) {
+            var f = files[i3];
+            try {
+              var l = f.c.length;
+              wzh(out, tot, f, f.f, f.u, l);
+              var badd = 30 + f.f.length + exfl(f.extra);
+              var loc = tot + badd;
+              out.set(f.c, loc);
+              wzh(out, o, f, f.f, f.u, l, tot, f.m), o += 16 + badd + (f.m ? f.m.length : 0), tot = loc + l;
+            } catch (e) {
+              return cbd(e, null);
+            }
+          }
+          wzf(out, o, files.length, cdl, oe);
+          cbd(null, out);
+        };
+        if (!lft)
+          cbf();
+        var _loop_1 = function(i3) {
+          var fn = k[i3];
+          var _a2 = r[fn], file = _a2[0], p = _a2[1];
+          var c = crc(), size = file.length;
+          c.p(file);
+          var f = strToU8(fn), s = f.length;
+          var com = p.comment, m = com && strToU8(com), ms = m && m.length;
+          var exl = exfl(p.extra);
+          var compression = p.level == 0 ? 0 : 8;
+          var cbl = function(e, d) {
+            if (e) {
+              tAll();
+              cbd(e, null);
+            } else {
+              var l = d.length;
+              files[i3] = mrg(p, {
+                size,
+                crc: c.d(),
+                c: d,
+                f,
+                m,
+                u: s != fn.length || m && com.length != ms,
+                compression
+              });
+              o += 30 + s + exl + l;
+              tot += 76 + 2 * (s + exl) + (ms || 0) + l;
+              if (!--lft)
+                cbf();
+            }
+          };
+          if (s > 65535)
+            cbl(err(11, 0, 1), null);
+          if (!compression)
+            cbl(null, file);
+          else if (size < 16e4) {
+            try {
+              cbl(null, deflateSync(file, p));
+            } catch (e) {
+              cbl(e, null);
+            }
+          } else
+            term.push(deflate(file, p, cbl));
+        };
+        for (var i2 = 0; i2 < slft; ++i2) {
+          _loop_1(i2);
+        }
+        return tAll;
+      }
+      exports.zip = zip;
+      function zipSync(data, opts) {
+        if (!opts)
+          opts = {};
+        var r = {};
+        var files = [];
+        fltn(data, "", r, opts);
+        var o = 0;
+        var tot = 0;
+        for (var fn in r) {
+          var _a2 = r[fn], file = _a2[0], p = _a2[1];
+          var compression = p.level == 0 ? 0 : 8;
+          var f = strToU8(fn), s = f.length;
+          var com = p.comment, m = com && strToU8(com), ms = m && m.length;
+          var exl = exfl(p.extra);
+          if (s > 65535)
+            err(11);
+          var d = compression ? deflateSync(file, p) : file, l = d.length;
+          var c = crc();
+          c.p(file);
+          files.push(mrg(p, {
+            size: file.length,
+            crc: c.d(),
+            c: d,
+            f,
+            m,
+            u: s != fn.length || m && com.length != ms,
+            o,
+            compression
+          }));
+          o += 30 + s + exl + l;
+          tot += 76 + 2 * (s + exl) + (ms || 0) + l;
+        }
+        var out = new u8(tot + 22), oe = o, cdl = tot - o;
+        for (var i2 = 0; i2 < files.length; ++i2) {
+          var f = files[i2];
+          wzh(out, f.o, f, f.f, f.u, f.c.length);
+          var badd = 30 + f.f.length + exfl(f.extra);
+          out.set(f.c, f.o + badd);
+          wzh(out, o, f, f.f, f.u, f.c.length, f.o, f.m), o += 16 + badd + (f.m ? f.m.length : 0);
+        }
+        wzf(out, o, files.length, cdl, oe);
+        return out;
+      }
+      exports.zipSync = zipSync;
+      var UnzipPassThrough = /* @__PURE__ */ (function() {
+        function UnzipPassThrough2() {
+        }
+        UnzipPassThrough2.prototype.push = function(data, final) {
+          this.ondata(null, data, final);
+        };
+        UnzipPassThrough2.compression = 0;
+        return UnzipPassThrough2;
+      })();
+      exports.UnzipPassThrough = UnzipPassThrough;
+      var UnzipInflate = /* @__PURE__ */ (function() {
+        function UnzipInflate2() {
+          var _this = this;
+          this.i = new Inflate(function(dat, final) {
+            _this.ondata(null, dat, final);
+          });
+        }
+        UnzipInflate2.prototype.push = function(data, final) {
+          try {
+            this.i.push(data, final);
+          } catch (e) {
+            this.ondata(e, null, final);
+          }
+        };
+        UnzipInflate2.compression = 8;
+        return UnzipInflate2;
+      })();
+      exports.UnzipInflate = UnzipInflate;
+      var AsyncUnzipInflate = /* @__PURE__ */ (function() {
+        function AsyncUnzipInflate2(_, sz) {
+          var _this = this;
+          if (sz < 32e4) {
+            this.i = new Inflate(function(dat, final) {
+              _this.ondata(null, dat, final);
+            });
+          } else {
+            this.i = new AsyncInflate(function(err2, dat, final) {
+              _this.ondata(err2, dat, final);
+            });
+            this.terminate = this.i.terminate;
+          }
+        }
+        AsyncUnzipInflate2.prototype.push = function(data, final) {
+          if (this.i.terminate)
+            data = slc(data, 0);
+          this.i.push(data, final);
+        };
+        AsyncUnzipInflate2.compression = 8;
+        return AsyncUnzipInflate2;
+      })();
+      exports.AsyncUnzipInflate = AsyncUnzipInflate;
+      var Unzip = /* @__PURE__ */ (function() {
+        function Unzip2(cb) {
+          this.onfile = cb;
+          this.k = [];
+          this.o = {
+            0: UnzipPassThrough
+          };
+          this.p = et;
+        }
+        Unzip2.prototype.push = function(chunk, final) {
+          var _this = this;
+          if (!this.onfile)
+            err(5);
+          if (!this.p)
+            err(4);
+          if (this.c > 0) {
+            var len = Math.min(this.c, chunk.length);
+            var toAdd = chunk.subarray(0, len);
+            this.c -= len;
+            if (this.d)
+              this.d.push(toAdd, !this.c);
+            else
+              this.k[0].push(toAdd);
+            chunk = chunk.subarray(len);
+            if (chunk.length)
+              return this.push(chunk, final);
+          } else {
+            var f = 0, i2 = 0, is = void 0, buf = void 0;
+            if (!this.p.length)
+              buf = chunk;
+            else if (!chunk.length)
+              buf = this.p;
+            else {
+              buf = new u8(this.p.length + chunk.length);
+              buf.set(this.p), buf.set(chunk, this.p.length);
+            }
+            var l = buf.length, oc = this.c, add = oc && this.d;
+            var _loop_2 = function() {
+              var _a2;
+              var sig = b4(buf, i2);
+              if (sig == 67324752) {
+                f = 1, is = i2;
+                this_1.d = null;
+                this_1.c = 0;
+                var bf = b2(buf, i2 + 6), cmp_1 = b2(buf, i2 + 8), u = bf & 2048, dd = bf & 8, fnl = b2(buf, i2 + 26), es = b2(buf, i2 + 28);
+                if (l > i2 + 30 + fnl + es) {
+                  var chks_3 = [];
+                  this_1.k.unshift(chks_3);
+                  f = 2;
+                  var sc_1 = b4(buf, i2 + 18), su_1 = b4(buf, i2 + 22);
+                  var fn_1 = strFromU8(buf.subarray(i2 + 30, i2 += 30 + fnl), !u);
+                  if (sc_1 == 4294967295) {
+                    _a2 = dd ? [-2] : z64e(buf, i2), sc_1 = _a2[0], su_1 = _a2[1];
+                  } else if (dd)
+                    sc_1 = -1;
+                  i2 += es;
+                  this_1.c = sc_1;
+                  var d_1;
+                  var file_1 = {
+                    name: fn_1,
+                    compression: cmp_1,
+                    start: function() {
+                      if (!file_1.ondata)
+                        err(5);
+                      if (!sc_1)
+                        file_1.ondata(null, et, true);
+                      else {
+                        var ctr = _this.o[cmp_1];
+                        if (!ctr)
+                          file_1.ondata(err(14, "unknown compression type " + cmp_1, 1), null, false);
+                        d_1 = sc_1 < 0 ? new ctr(fn_1) : new ctr(fn_1, sc_1, su_1);
+                        d_1.ondata = function(err2, dat3, final2) {
+                          file_1.ondata(err2, dat3, final2);
+                        };
+                        for (var _i = 0, chks_4 = chks_3; _i < chks_4.length; _i++) {
+                          var dat2 = chks_4[_i];
+                          d_1.push(dat2, false);
+                        }
+                        if (_this.k[0] == chks_3 && _this.c)
+                          _this.d = d_1;
+                        else
+                          d_1.push(et, true);
+                      }
+                    },
+                    terminate: function() {
+                      if (d_1 && d_1.terminate)
+                        d_1.terminate();
+                    }
+                  };
+                  if (sc_1 >= 0)
+                    file_1.size = sc_1, file_1.originalSize = su_1;
+                  this_1.onfile(file_1);
+                }
+                return "break";
+              } else if (oc) {
+                if (sig == 134695760) {
+                  is = i2 += 12 + (oc == -2 && 8), f = 3, this_1.c = 0;
+                  return "break";
+                } else if (sig == 33639248) {
+                  is = i2 -= 4, f = 3, this_1.c = 0;
+                  return "break";
+                }
+              }
+            };
+            var this_1 = this;
+            for (; i2 < l - 4; ++i2) {
+              var state_1 = _loop_2();
+              if (state_1 === "break")
+                break;
+            }
+            this.p = et;
+            if (oc < 0) {
+              var dat = f ? buf.subarray(0, is - 12 - (oc == -2 && 8) - (b4(buf, is - 16) == 134695760 && 4)) : buf.subarray(0, i2);
+              if (add)
+                add.push(dat, !!f);
+              else
+                this.k[+(f == 2)].push(dat);
+            }
+            if (f & 2)
+              return this.push(buf.subarray(i2), final);
+            this.p = buf.subarray(i2);
+          }
+          if (final) {
+            if (this.c)
+              err(13);
+            this.p = null;
+          }
+        };
+        Unzip2.prototype.register = function(decoder) {
+          this.o[decoder.compression] = decoder;
+        };
+        return Unzip2;
+      })();
+      exports.Unzip = Unzip;
+      var mt = typeof queueMicrotask == "function" ? queueMicrotask : typeof setTimeout == "function" ? setTimeout : function(fn) {
+        fn();
+      };
+      function unzip(data, opts, cb) {
+        if (!cb)
+          cb = opts, opts = {};
+        if (typeof cb != "function")
+          err(7);
+        var term = [];
+        var tAll = function() {
+          for (var i3 = 0; i3 < term.length; ++i3)
+            term[i3]();
+        };
+        var files = {};
+        var cbd = function(a, b) {
+          mt(function() {
+            cb(a, b);
+          });
+        };
+        mt(function() {
+          cbd = cb;
+        });
+        var e = data.length - 22;
+        for (; b4(data, e) != 101010256; --e) {
+          if (!e || data.length - e > 65558) {
+            cbd(err(13, 0, 1), null);
+            return tAll;
+          }
+        }
+        ;
+        var lft = b2(data, e + 8);
+        if (lft) {
+          var c = lft;
+          var o = b4(data, e + 16);
+          var z = o == 4294967295 || c == 65535;
+          if (z) {
+            var ze = b4(data, e - 12);
+            z = b4(data, ze) == 101075792;
+            if (z) {
+              c = lft = b4(data, ze + 32);
+              o = b4(data, ze + 48);
+            }
+          }
+          var fltr = opts && opts.filter;
+          var _loop_3 = function(i3) {
+            var _a2 = zh(data, o, z), c_1 = _a2[0], sc = _a2[1], su = _a2[2], fn = _a2[3], no = _a2[4], off = _a2[5], b = slzh(data, off);
+            o = no;
+            var cbl = function(e2, d) {
+              if (e2) {
+                tAll();
+                cbd(e2, null);
+              } else {
+                if (d)
+                  files[fn] = d;
+                if (!--lft)
+                  cbd(null, files);
+              }
+            };
+            if (!fltr || fltr({
+              name: fn,
+              size: sc,
+              originalSize: su,
+              compression: c_1
+            })) {
+              if (!c_1)
+                cbl(null, slc(data, b, b + sc));
+              else if (c_1 == 8) {
+                var infl = data.subarray(b, b + sc);
+                if (su < 524288 || sc > 0.8 * su) {
+                  try {
+                    cbl(null, inflateSync(infl, { out: new u8(su) }));
+                  } catch (e2) {
+                    cbl(e2, null);
+                  }
+                } else
+                  term.push(inflate(infl, { size: su }, cbl));
+              } else
+                cbl(err(14, "unknown compression type " + c_1, 1), null);
+            } else
+              cbl(null, null);
+          };
+          for (var i2 = 0; i2 < c; ++i2) {
+            _loop_3(i2);
+          }
+        } else
+          cbd(null, {});
+        return tAll;
+      }
+      exports.unzip = unzip;
+      function unzipSync(data, opts) {
+        var files = {};
+        var e = data.length - 22;
+        for (; b4(data, e) != 101010256; --e) {
+          if (!e || data.length - e > 65558)
+            err(13);
+        }
+        ;
+        var c = b2(data, e + 8);
+        if (!c)
+          return {};
+        var o = b4(data, e + 16);
+        var z = o == 4294967295 || c == 65535;
+        if (z) {
+          var ze = b4(data, e - 12);
+          z = b4(data, ze) == 101075792;
+          if (z) {
+            c = b4(data, ze + 32);
+            o = b4(data, ze + 48);
+          }
+        }
+        var fltr = opts && opts.filter;
+        for (var i2 = 0; i2 < c; ++i2) {
+          var _a2 = zh(data, o, z), c_2 = _a2[0], sc = _a2[1], su = _a2[2], fn = _a2[3], no = _a2[4], off = _a2[5], b = slzh(data, off);
+          o = no;
+          if (!fltr || fltr({
+            name: fn,
+            size: sc,
+            originalSize: su,
+            compression: c_2
+          })) {
+            if (!c_2)
+              files[fn] = slc(data, b, b + sc);
+            else if (c_2 == 8)
+              files[fn] = inflateSync(data.subarray(b, b + sc), { out: new u8(su) });
+            else
+              err(14, "unknown compression type " + c_2);
+          }
+        }
+        return files;
+      }
+      exports.unzipSync = unzipSync;
+    }
+  });
+
+  // __temp__/sources/_shared/base64.js
+  var require_base64 = __commonJS({
+    "__temp__/sources/_shared/base64.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.base64Decode = exports.bytesToBase64 = void 0;
+      var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+      var decodeMap = (() => {
+        const map = new Uint8Array(128);
+        map.fill(255);
+        for (let i = 0; i < alphabet.length; i += 1) {
+          map[alphabet.charCodeAt(i)] = i;
+        }
+        return map;
+      })();
+      var bytesToBase64 = (bytes) => {
+        let output = "";
+        const length = bytes.length;
+        for (let i = 0; i < length; i += 3) {
+          const a = bytes[i];
+          const b = i + 1 < length ? bytes[i + 1] : 0;
+          const c = i + 2 < length ? bytes[i + 2] : 0;
+          const triplet = a << 16 | b << 8 | c;
+          output += alphabet[triplet >> 18 & 63];
+          output += alphabet[triplet >> 12 & 63];
+          output += i + 1 < length ? alphabet[triplet >> 6 & 63] : "=";
+          output += i + 2 < length ? alphabet[triplet & 63] : "=";
+        }
+        return output;
+      };
+      exports.bytesToBase64 = bytesToBase64;
+      var base64Decode = (value) => {
+        var _a, _b, _c, _d;
+        const cleaned = value.replace(/[^A-Za-z0-9+/=]/g, "");
+        if (!cleaned)
+          return "";
+        const bytes = [];
+        for (let i = 0; i < cleaned.length; i += 4) {
+          const enc1 = (_a = decodeMap[cleaned.charCodeAt(i)]) != null ? _a : 255;
+          const enc2 = (_b = decodeMap[cleaned.charCodeAt(i + 1)]) != null ? _b : 255;
+          const enc3 = cleaned[i + 2] === "=" ? 64 : (_c = decodeMap[cleaned.charCodeAt(i + 2)]) != null ? _c : 255;
+          const enc4 = cleaned[i + 3] === "=" ? 64 : (_d = decodeMap[cleaned.charCodeAt(i + 3)]) != null ? _d : 255;
+          if (enc1 === 255 || enc2 === 255 || enc3 === 255 || enc4 === 255) {
+            throw new Error("Invalid base64 input");
+          }
+          bytes.push(enc1 << 2 | enc2 >> 4);
+          if (enc3 !== 64)
+            bytes.push((enc2 & 15) << 4 | enc3 >> 2);
+          if (enc4 !== 64)
+            bytes.push((enc3 & 3) << 6 | enc4);
+        }
+        let result = "";
+        for (let i = 0; i < bytes.length; ) {
+          const c = bytes[i];
+          if (c < 128) {
+            result += String.fromCharCode(c);
+            i += 1;
+          } else if (c < 224 && i + 1 < bytes.length) {
+            result += String.fromCharCode((c & 31) << 6 | bytes[i + 1] & 63);
+            i += 2;
+          } else if (c < 240 && i + 2 < bytes.length) {
+            result += String.fromCharCode((c & 15) << 12 | (bytes[i + 1] & 63) << 6 | bytes[i + 2] & 63);
+            i += 3;
+          } else if (i + 3 < bytes.length) {
+            const code = (c & 7) << 18 | (bytes[i + 1] & 63) << 12 | (bytes[i + 2] & 63) << 6 | bytes[i + 3] & 63;
+            const offset = code - 65536;
+            result += String.fromCharCode(55296 + (offset >> 10), 56320 + (offset & 1023));
+            i += 4;
+          } else {
+            break;
+          }
+        }
+        return result;
+      };
+      exports.base64Decode = base64Decode;
+    }
+  });
+
+  // __temp__/sources/r2-library/crypto.js
+  var require_crypto = __commonJS({
+    "__temp__/sources/r2-library/crypto.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.hmacSha256Hex = exports.hmacSha256 = exports.sha256Hex = exports.toHex = exports.toBytes = exports.utf8Decode = exports.utf8Encode = exports.bytesToBase64 = void 0;
+      var base64_1 = require_base64();
+      exports.bytesToBase64 = base64_1.bytesToBase64;
+      var utf8Encode = (value) => {
+        const bytes = [];
+        for (let index = 0; index < value.length; index += 1) {
+          let code = value.charCodeAt(index);
+          if (code >= 55296 && code <= 56319 && index + 1 < value.length) {
+            const next = value.charCodeAt(index + 1);
+            if (next >= 56320 && next <= 57343) {
+              code = 65536 + (code - 55296 << 10) + (next - 56320);
+              index += 1;
+            }
+          }
+          if (code <= 127) {
+            bytes.push(code);
+          } else if (code <= 2047) {
+            bytes.push(192 | code >> 6, 128 | code & 63);
+          } else if (code <= 65535) {
+            bytes.push(224 | code >> 12, 128 | code >> 6 & 63, 128 | code & 63);
+          } else {
+            bytes.push(240 | code >> 18, 128 | code >> 12 & 63, 128 | code >> 6 & 63, 128 | code & 63);
+          }
+        }
+        return Uint8Array.from(bytes);
+      };
+      exports.utf8Encode = utf8Encode;
+      var utf8Decode = (bytes) => {
+        let result = "";
+        for (let index = 0; index < bytes.length; ) {
+          const byte = bytes[index];
+          if (byte <= 127) {
+            result += String.fromCharCode(byte);
+            index += 1;
+            continue;
+          }
+          if ((byte & 224) === 192 && index + 1 < bytes.length) {
+            const code = (byte & 31) << 6 | bytes[index + 1] & 63;
+            result += String.fromCharCode(code);
+            index += 2;
+            continue;
+          }
+          if ((byte & 240) === 224 && index + 2 < bytes.length) {
+            const code = (byte & 15) << 12 | (bytes[index + 1] & 63) << 6 | bytes[index + 2] & 63;
+            result += String.fromCharCode(code);
+            index += 3;
+            continue;
+          }
+          if ((byte & 248) === 240 && index + 3 < bytes.length) {
+            let code = (byte & 7) << 18 | (bytes[index + 1] & 63) << 12 | (bytes[index + 2] & 63) << 6 | bytes[index + 3] & 63;
+            code -= 65536;
+            result += String.fromCharCode(55296 + (code >> 10), 56320 + (code & 1023));
+            index += 4;
+            continue;
+          }
+          result += "\uFFFD";
+          index += 1;
+        }
+        return result;
+      };
+      exports.utf8Decode = utf8Decode;
+      var toBytes = (value) => typeof value === "string" ? (0, exports.utf8Encode)(value) : value;
+      exports.toBytes = toBytes;
+      var toHex = (bytes) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+      exports.toHex = toHex;
+      var sha256Hex = (value) => (0, exports.toHex)(Crypto.sha256((0, exports.toBytes)(value)));
+      exports.sha256Hex = sha256Hex;
+      var hmacSha256 = (key, message) => {
+        const blockSize = 64;
+        let keyBytes = (0, exports.toBytes)(key);
+        if (keyBytes.length > blockSize) {
+          keyBytes = Crypto.sha256(keyBytes);
+        }
+        const keyed = new Uint8Array(blockSize);
+        keyed.set(keyBytes);
+        const ipad = new Uint8Array(blockSize);
+        const opad = new Uint8Array(blockSize);
+        for (let index = 0; index < blockSize; index += 1) {
+          ipad[index] = keyed[index] ^ 54;
+          opad[index] = keyed[index] ^ 92;
+        }
+        const messageBytes = (0, exports.toBytes)(message);
+        const inner = new Uint8Array(blockSize + messageBytes.length);
+        inner.set(ipad);
+        inner.set(messageBytes, blockSize);
+        const outer = new Uint8Array(blockSize + 32);
+        outer.set(opad);
+        outer.set(Crypto.sha256(inner), blockSize);
+        return Crypto.sha256(outer);
+      };
+      exports.hmacSha256 = hmacSha256;
+      var hmacSha256Hex = (key, message) => (0, exports.toHex)((0, exports.hmacSha256)(key, message));
+      exports.hmacSha256Hex = hmacSha256Hex;
+    }
+  });
+
+  // __temp__/sources/r2-library/archive.js
+  var require_archive = __commonJS({
+    "__temp__/sources/r2-library/archive.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.extractArchivePages = exports.parseChapterNumber = exports.naturalCompare = exports.folderIdFromPrefix = exports.basename = exports.extractArchivePageDataUrl = exports.findArchiveByChapterName = exports.archiveStem = exports.parseChapterPageRef = exports.isDetailsName = exports.isCoverName = exports.isImageName = exports.isArchiveName = void 0;
+      var fflate_1 = require_browser();
+      var crypto_1 = require_crypto();
+      var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set([
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".gif",
+        ".avif",
+        ".bmp"
+      ]);
+      var isArchiveName = (name) => {
+        const lower = name.toLowerCase();
+        return lower.endsWith(".cbz") || lower.endsWith(".zip");
+      };
+      exports.isArchiveName = isArchiveName;
+      var isImageName = (name) => {
+        if (!name || name.endsWith("/"))
+          return false;
+        if (name.startsWith("."))
+          return false;
+        const lower = name.toLowerCase();
+        const dot = lower.lastIndexOf(".");
+        if (dot < 0)
+          return false;
+        return IMAGE_EXTENSIONS.has(lower.slice(dot));
+      };
+      exports.isImageName = isImageName;
+      var isCoverName = (name) => /^cover\.(png|jpe?g|webp|gif|avif)$/i.test(name);
+      exports.isCoverName = isCoverName;
+      var isDetailsName = (name) => /^(details|info|metadata|series)\.json$/i.test(name);
+      exports.isDetailsName = isDetailsName;
+      var parseChapterPageRef = (value) => {
+        const trimmed = value.trim();
+        if (!trimmed || /^https?:\/\//i.test(trimmed) || (0, exports.isCoverName)(trimmed)) {
+          return null;
+        }
+        const separator = trimmed.lastIndexOf("_");
+        if (separator <= 0 || separator === trimmed.length - 1)
+          return null;
+        const chapter = trimmed.slice(0, separator).trim();
+        const page = trimmed.slice(separator + 1).trim();
+        if (!chapter || !page)
+          return null;
+        const lower = page.toLowerCase();
+        const dot = lower.lastIndexOf(".");
+        if (dot < 0)
+          return null;
+        if (!IMAGE_EXTENSIONS.has(lower.slice(dot)))
+          return null;
+        return { chapter, page };
+      };
+      exports.parseChapterPageRef = parseChapterPageRef;
+      var archiveStem = (name) => name.replace(/\.(cbz|zip)$/i, "").trim();
+      exports.archiveStem = archiveStem;
+      var findArchiveByChapterName = (archives, chapterName) => {
+        const needle = chapterName.trim().toLowerCase();
+        if (!needle)
+          return void 0;
+        const exact = archives.find((archive) => (0, exports.archiveStem)(archive.name).toLowerCase() === needle);
+        if (exact)
+          return exact;
+        return archives.find((archive) => {
+          const stem = (0, exports.archiveStem)(archive.name).toLowerCase();
+          const stripped = stem.replace(/^\d+(\.\d+)?\s*[-._:)\]\s]+/, "").trim();
+          return stripped === needle || stem.endsWith(needle);
+        });
+      };
+      exports.findArchiveByChapterName = findArchiveByChapterName;
+      var mimeForPage = (pageName) => {
+        const lower = pageName.toLowerCase();
+        if (lower.endsWith(".png"))
+          return "image/png";
+        if (lower.endsWith(".webp"))
+          return "image/webp";
+        if (lower.endsWith(".gif"))
+          return "image/gif";
+        if (lower.endsWith(".avif"))
+          return "image/avif";
+        if (lower.endsWith(".bmp"))
+          return "image/bmp";
+        return "image/jpeg";
+      };
+      var extractArchivePageDataUrl = (archiveBytes, pageName) => {
+        const files = (0, fflate_1.unzipSync)(archiveBytes);
+        const target = pageName.toLowerCase();
+        const entry = Object.entries(files).find(([name, data2]) => {
+          if (!(data2 == null ? void 0 : data2.length) || name.endsWith("/"))
+            return false;
+          if (name.startsWith("__MACOSX/"))
+            return false;
+          return (0, exports.basename)(name).toLowerCase() === target;
+        });
+        if (!entry) {
+          throw new Error(`Page "${pageName}" not found inside archive`);
+        }
+        const [, data] = entry;
+        return `data:${mimeForPage(pageName)};base64,${(0, crypto_1.bytesToBase64)(data)}`;
+      };
+      exports.extractArchivePageDataUrl = extractArchivePageDataUrl;
+      var basename = (key) => {
+        var _a;
+        const parts = key.replace(/\/+$/, "").split("/");
+        return (_a = parts[parts.length - 1]) != null ? _a : key;
+      };
+      exports.basename = basename;
+      var folderIdFromPrefix = (prefix, rootPrefix) => {
+        var _a, _b;
+        const cleaned = rootPrefix.replace(/^\/+|\/+$/g, "");
+        const normalized = prefix.replace(/^\/+/, "").replace(/\/+$/, "");
+        if (!cleaned) {
+          return (_a = normalized.split("/")[0]) != null ? _a : "";
+        }
+        const root = `${cleaned}/`;
+        const full = prefix.replace(/^\/+/, "");
+        const relative = full.startsWith(root) ? full.slice(root.length) : full;
+        return (_b = relative.replace(/\/+$/, "").split("/")[0]) != null ? _b : "";
+      };
+      exports.folderIdFromPrefix = folderIdFromPrefix;
+      var naturalCompare = (left, right) => left.localeCompare(right, void 0, { numeric: true, sensitivity: "base" });
+      exports.naturalCompare = naturalCompare;
+      var parseChapterNumber = (name, fallback) => {
+        const stem = name.replace(/\.(cbz|zip)$/i, "");
+        const match = stem.match(/(\d+(?:\.\d+)?)/);
+        return match ? Number(match[1]) : fallback;
+      };
+      exports.parseChapterNumber = parseChapterNumber;
+      var extractArchivePages = (archiveBytes) => {
+        const files = (0, fflate_1.unzipSync)(archiveBytes);
+        const pages = Object.entries(files).filter(([name, data]) => {
+          if (!(data == null ? void 0 : data.length))
+            return false;
+          if (name.endsWith("/"))
+            return false;
+          if (name.startsWith("__MACOSX/"))
+            return false;
+          if (name.split("/").some((part) => part.startsWith(".")))
+            return false;
+          const lower = name.toLowerCase();
+          const dot = lower.lastIndexOf(".");
+          if (dot < 0)
+            return false;
+          return IMAGE_EXTENSIONS.has(lower.slice(dot));
+        }).map(([name, data]) => ({ name, data })).sort((left, right) => (0, exports.naturalCompare)(left.name, right.name)).map(({ name, data }) => ({
+          name,
+          b64: (0, crypto_1.bytesToBase64)(data)
+        }));
+        if (!pages.length) {
+          throw new Error("Archive contained no readable image pages");
+        }
+        return pages;
+      };
+      exports.extractArchivePages = extractArchivePages;
+    }
+  });
+
+  // __temp__/sources/r2-library/config.js
+  var require_config = __commonJS({
+    "__temp__/sources/r2-library/config.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.saveConfig = exports.loadConfig = exports.SETTINGS = void 0;
+      exports.SETTINGS = {
+        accountId: "accountId",
+        accessKeyId: "accessKeyId",
+        secretAccessKey: "secretAccessKey",
+        bucket: "bucket",
+        endpoint: "endpoint",
+        prefix: "prefix"
+      };
+      var readString = async (key) => {
+        var _a;
+        const value = await ObjectStore.string(key);
+        return (_a = value == null ? void 0 : value.trim()) != null ? _a : "";
+      };
+      var loadConfig = async () => {
+        const accountId = await readString(exports.SETTINGS.accountId);
+        const accessKeyId = await readString(exports.SETTINGS.accessKeyId);
+        const secretAccessKey = await readString(exports.SETTINGS.secretAccessKey);
+        const bucket = await readString(exports.SETTINGS.bucket);
+        const endpointOverride = await readString(exports.SETTINGS.endpoint);
+        const prefixRaw = await readString(exports.SETTINGS.prefix);
+        if (!accountId || !accessKeyId || !secretAccessKey || !bucket) {
+          throw new Error("R2 Library is not configured. Open source settings and set Account ID, Access Key ID, Secret Access Key, and Bucket.");
+        }
+        return {
+          accountId,
+          accessKeyId,
+          secretAccessKey,
+          bucket,
+          endpoint: endpointOverride.replace(/\/+$/, "") || `https://${accountId}.r2.cloudflarestorage.com`,
+          prefix: prefixRaw.replace(/^\/+|\/+$/g, "")
+        };
+      };
+      exports.loadConfig = loadConfig;
+      var saveConfig = async (data) => {
+        const write = async (key, allowEmpty = false) => {
+          if (!(key in data))
+            return;
+          const value = data[key];
+          if (typeof value !== "string")
+            return;
+          if (!allowEmpty && value.trim() === "")
+            return;
+          await ObjectStore.set(key, value.trim());
+        };
+        await write(exports.SETTINGS.accountId);
+        await write(exports.SETTINGS.accessKeyId);
+        await write(exports.SETTINGS.secretAccessKey);
+        await write(exports.SETTINGS.bucket);
+        await write(exports.SETTINGS.endpoint, true);
+        await write(exports.SETTINGS.prefix, true);
+      };
+      exports.saveConfig = saveConfig;
+    }
+  });
+
+  // __temp__/sources/r2-library/aws4.js
+  var require_aws4 = __commonJS({
+    "__temp__/sources/r2-library/aws4.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.signRequest = void 0;
+      var crypto_1 = require_crypto();
+      var encodeRfc3986 = (value) => encodeURIComponent(value).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+      var encodePath = (path) => path.split("/").map((segment) => encodeRfc3986(segment)).join("/");
+      var amzDate = (date) => {
+        const iso = date.toISOString().replace(/[:-]|\.\d{3}/g, "");
+        return { amz: iso, stamp: iso.slice(0, 8) };
+      };
+      var canonicalQuery = (params) => Object.keys(params).sort().map((key) => {
+        var _a;
+        return `${encodeRfc3986(key)}=${encodeRfc3986((_a = params[key]) != null ? _a : "")}`;
+      }).join("&");
+      var signingKey = (secretAccessKey, stamp, region, service) => {
+        const kDate = (0, crypto_1.hmacSha256)(`AWS4${secretAccessKey}`, stamp);
+        const kRegion = (0, crypto_1.hmacSha256)(kDate, region);
+        const kService = (0, crypto_1.hmacSha256)(kRegion, service);
+        return (0, crypto_1.hmacSha256)(kService, "aws4_request");
+      };
+      var parseHttpUrl = (value) => {
+        const match = value.trim().replace(/\/+$/, "").match(/^(https?):\/\/([^/?#]+)/i);
+        if (!match) {
+          throw new Error(`Invalid endpoint URL: ${value}`);
+        }
+        return {
+          origin: `${match[1].toLowerCase()}://${match[2]}`,
+          host: match[2]
+        };
+      };
+      var signRequest = (options) => {
+        var _a, _b, _c, _d, _e, _f;
+        const method = ((_a = options.method) != null ? _a : "GET").toUpperCase();
+        const region = (_b = options.region) != null ? _b : "auto";
+        const service = (_c = options.service) != null ? _c : "s3";
+        const { amz, stamp } = amzDate(/* @__PURE__ */ new Date());
+        const payloadHash = (_d = options.bodyHash) != null ? _d : "UNSIGNED-PAYLOAD";
+        const { origin, host } = parseHttpUrl(options.endpoint);
+        const keyPath = options.key ? `/${options.key.replace(/^\/+/, "")}` : "";
+        const canonicalUri = encodePath(`/${options.bucket}${keyPath}`);
+        const query = { ...(_e = options.query) != null ? _e : {} };
+        const headers = {
+          host,
+          ...(_f = options.headers) != null ? _f : {}
+        };
+        if (options.expiresSeconds != null) {
+          query["X-Amz-Algorithm"] = "AWS4-HMAC-SHA256";
+          query["X-Amz-Credential"] = `${options.accessKeyId}/${stamp}/${region}/${service}/aws4_request`;
+          query["X-Amz-Date"] = amz;
+          query["X-Amz-Expires"] = String(options.expiresSeconds);
+          query["X-Amz-SignedHeaders"] = "host";
+        } else {
+          headers["x-amz-content-sha256"] = payloadHash;
+          headers["x-amz-date"] = amz;
+        }
+        const signedHeaderNames = Object.keys(headers).map((name) => name.toLowerCase()).sort();
+        const canonicalHeaders = signedHeaderNames.map((name) => {
+          var _a2;
+          const matched = Object.entries(headers).find(([headerName]) => headerName.toLowerCase() === name);
+          return `${name}:${((_a2 = matched == null ? void 0 : matched[1]) != null ? _a2 : "").trim()}
+`;
+        }).join("");
+        const signedHeaders = signedHeaderNames.join(";");
+        const queryString = canonicalQuery(query);
+        const canonicalRequest = [
+          method,
+          canonicalUri,
+          queryString,
+          canonicalHeaders,
+          signedHeaders,
+          payloadHash
+        ].join("\n");
+        const stringToSign = [
+          "AWS4-HMAC-SHA256",
+          amz,
+          `${stamp}/${region}/${service}/aws4_request`,
+          (0, crypto_1.sha256Hex)(canonicalRequest)
+        ].join("\n");
+        const signature = (0, crypto_1.hmacSha256Hex)(signingKey(options.secretAccessKey, stamp, region, service), stringToSign);
+        if (options.expiresSeconds != null) {
+          query["X-Amz-Signature"] = signature;
+          return {
+            url: `${origin}${canonicalUri}?${canonicalQuery(query)}`,
+            method,
+            headers: { host }
+          };
+        }
+        headers.Authorization = `AWS4-HMAC-SHA256 Credential=${options.accessKeyId}/${stamp}/${region}/${service}/aws4_request, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+        return {
+          url: `${origin}${canonicalUri}${queryString ? `?${queryString}` : ""}`,
+          method,
+          headers
+        };
+      };
+      exports.signRequest = signRequest;
+    }
+  });
+
+  // __temp__/sources/r2-library/r2.js
+  var require_r2 = __commonJS({
+    "__temp__/sources/r2-library/r2.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.__assertListXmlForTests = exports.__parseListXmlForTests = exports.presignGet = exports.getObjectText = exports.getObjectBytes = exports.listAll = void 0;
+      var aws4_1 = require_aws4();
+      var crypto_1 = require_crypto();
+      var client;
+      var http = () => {
+        if (!client) {
+          client = new HttpClient({
+            timeout: 6e4,
+            validateStatus: () => true
+          });
+        }
+        return client;
+      };
+      var decodeXml = (value) => value.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+      var xmlValues = (xml, tag) => {
+        var _a;
+        const values = [];
+        const pattern = new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>`, "g");
+        let match;
+        while (match = pattern.exec(xml)) {
+          values.push(decodeXml((_a = match[1]) != null ? _a : ""));
+        }
+        return values;
+      };
+      var firstXml = (xml, tag) => xmlValues(xml, tag)[0];
+      var assertListXml = (xml, status) => {
+        var _a, _b;
+        if (/<Error[\s>]/i.test(xml)) {
+          const code = (_a = firstXml(xml, "Code")) != null ? _a : "Unknown";
+          const message = (_b = firstXml(xml, "Message")) != null ? _b : xml.slice(0, 240);
+          throw new Error(`R2 list error (${status}) ${code}: ${message}`);
+        }
+        if (!/<ListBucketResult[\s>]/i.test(xml)) {
+          throw new Error(`Unexpected R2 list response (${status}): ${xml.slice(0, 240)}`);
+        }
+      };
+      var parseListXml = (xml) => {
+        var _a, _b, _c, _d;
+        const commonBlocks = (_a = xml.match(/<CommonPrefixes>[\s\S]*?<\/CommonPrefixes>/gi)) != null ? _a : [];
+        const prefixes = commonBlocks.map((block) => firstXml(block, "Prefix")).filter((value) => !!value);
+        const contentBlocks = (_b = xml.match(/<Contents>[\s\S]*?<\/Contents>/gi)) != null ? _b : [];
+        const objects = [];
+        for (const block of contentBlocks) {
+          const key = firstXml(block, "Key");
+          if (!key || key.endsWith("/"))
+            continue;
+          objects.push({
+            key,
+            size: Number((_c = firstXml(block, "Size")) != null ? _c : "0"),
+            lastModified: firstXml(block, "LastModified")
+          });
+        }
+        return {
+          prefixes,
+          objects,
+          continuationToken: ((_d = firstXml(xml, "IsTruncated")) == null ? void 0 : _d.toLowerCase()) === "true" ? firstXml(xml, "NextContinuationToken") : void 0
+        };
+      };
+      var signedGet = (config, options) => (0, aws4_1.signRequest)({
+        method: "GET",
+        endpoint: config.endpoint,
+        bucket: config.bucket,
+        key: options.key,
+        accessKeyId: config.accessKeyId,
+        secretAccessKey: config.secretAccessKey,
+        query: options.query,
+        expiresSeconds: 60 * 15
+      });
+      var listPage = async (config, prefix, options = {}) => {
+        const query = {
+          "list-type": "2",
+          "max-keys": "1000",
+          prefix
+        };
+        if (options.delimiter)
+          query.delimiter = options.delimiter;
+        if (options.continuationToken) {
+          query["continuation-token"] = options.continuationToken;
+        }
+        const signed = signedGet(config, { query });
+        const response = await http().request({
+          url: signed.url,
+          method: "GET"
+        });
+        const xml = await response.text();
+        assertListXml(xml, response.status);
+        if (!response.ok) {
+          throw new Error(`R2 list failed (${response.status}): ${xml.slice(0, 240)}`);
+        }
+        return parseListXml(xml);
+      };
+      var listAll = async (config, prefix, delimiter) => {
+        const prefixes = [];
+        const objects = [];
+        let continuationToken;
+        do {
+          const page = await listPage(config, prefix, { delimiter, continuationToken });
+          prefixes.push(...page.prefixes);
+          objects.push(...page.objects);
+          continuationToken = page.continuationToken;
+        } while (continuationToken);
+        return { prefixes, objects };
+      };
+      exports.listAll = listAll;
+      var getObjectBytes = async (config, key) => {
+        var _a, _b;
+        const signed = signedGet(config, { key });
+        const response = await http().request({
+          url: signed.url,
+          method: "GET"
+        });
+        if (!response.ok) {
+          const body = await response.text();
+          if (/<Error[\s>]/i.test(body)) {
+            const code = (_a = firstXml(body, "Code")) != null ? _a : "Unknown";
+            const message = (_b = firstXml(body, "Message")) != null ? _b : body.slice(0, 240);
+            throw new Error(`R2 get error for ${key}: ${code}: ${message}`);
+          }
+          throw new Error(`R2 get failed (${response.status}) for ${key}: ${body.slice(0, 240)}`);
+        }
+        return response.bytes();
+      };
+      exports.getObjectBytes = getObjectBytes;
+      var getObjectText = async (config, key) => (0, crypto_1.utf8Decode)(await (0, exports.getObjectBytes)(config, key));
+      exports.getObjectText = getObjectText;
+      var presignGet = (config, key, expiresSeconds = 60 * 60) => (0, aws4_1.signRequest)({
+        method: "GET",
+        endpoint: config.endpoint,
+        bucket: config.bucket,
+        key,
+        accessKeyId: config.accessKeyId,
+        secretAccessKey: config.secretAccessKey,
+        expiresSeconds
+      }).url;
+      exports.presignGet = presignGet;
+      exports.__parseListXmlForTests = parseListXml;
+      exports.__assertListXmlForTests = assertListXml;
+    }
+  });
+
+  // __temp__/sources/r2-library/cover.js
+  var require_cover = __commonJS({
+    "__temp__/sources/r2-library/cover.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.resolveCoverImage = exports.PLACEHOLDER_COVER = void 0;
+      var archive_1 = require_archive();
+      var r2_1 = require_r2();
+      var coverCache = /* @__PURE__ */ new Map();
+      exports.PLACEHOLDER_COVER = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAPElEQVR42mNgYGD4z8DAwMgABXAGJAEY6AAjAwMDAyMjI8N/RhD4z8DIyAhlwBRABRkZGf6D5MEKYJJwBTA+AFjpAwB+1Qn6nY5qAAAAAABJRU5ErkJggg==";
+      var resolveCoverImage = async (options) => {
+        var _a;
+        const { config, contentId, coverKey, details, archives, allowArchiveExtract = true, fallbackToPlaceholder = false } = options;
+        if (coverKey) {
+          return (0, r2_1.presignGet)(config, coverKey, 60 * 60);
+        }
+        const coverValue = (_a = details == null ? void 0 : details.cover) == null ? void 0 : _a.trim();
+        if (coverValue) {
+          if (/^https?:\/\//i.test(coverValue) || coverValue.startsWith("data:")) {
+            return coverValue;
+          }
+          const ref = (0, archive_1.parseChapterPageRef)(coverValue);
+          if (ref && allowArchiveExtract) {
+            const cacheKey = `${config.bucket}:${contentId}:${ref.chapter}:${ref.page}`;
+            const cached = coverCache.get(cacheKey);
+            if (cached)
+              return cached;
+            const archive = (0, archive_1.findArchiveByChapterName)(archives, ref.chapter);
+            if (!archive) {
+              throw new Error(`Cover ref "${coverValue}" points at chapter "${ref.chapter}", but no matching .cbz/.zip was found in ${config.prefix}/${contentId}/`);
+            }
+            const bytes = await (0, r2_1.getObjectBytes)(config, archive.key);
+            const dataUrl = (0, archive_1.extractArchivePageDataUrl)(bytes, ref.page);
+            coverCache.set(cacheKey, dataUrl);
+            return dataUrl;
+          }
+        }
+        if (allowArchiveExtract && archives[0]) {
+          const cacheKey = `${config.bucket}:${contentId}:__first__`;
+          const cached = coverCache.get(cacheKey);
+          if (cached)
+            return cached;
+          try {
+            const bytes = await (0, r2_1.getObjectBytes)(config, archives[0].key);
+            for (const guess of ["1.png", "01.png", "001.png", "1.jpg", "01.jpg", "cover.png"]) {
+              try {
+                const dataUrl = (0, archive_1.extractArchivePageDataUrl)(bytes, guess);
+                coverCache.set(cacheKey, dataUrl);
+                return dataUrl;
+              } catch {
+              }
+            }
+          } catch {
+          }
+        }
+        return fallbackToPlaceholder ? exports.PLACEHOLDER_COVER : void 0;
+      };
+      exports.resolveCoverImage = resolveCoverImage;
+    }
+  });
+
+  // __temp__/sources/r2-library/details.js
+  var require_details = __commonJS({
+    "__temp__/sources/r2-library/details.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.parseDetailsJson = exports.contentFromDetails = void 0;
+      var types_1 = require_types();
+      var asEnum = (table, value, fallback) => {
+        if (value == null)
+          return fallback;
+        if (typeof value === "number") {
+          const matched = Object.values(table).find((entry) => entry === value);
+          return matched != null ? matched : fallback;
+        }
+        const normalized = value.trim().replace(/[\s-]+/g, "_").toUpperCase();
+        if (normalized in table) {
+          return table[normalized];
+        }
+        for (const [name, entry] of Object.entries(table)) {
+          if (name.replace(/_/g, "") === normalized.replace(/_/g, "")) {
+            return entry;
+          }
+        }
+        return fallback;
+      };
+      var RATING = {
+        EVERYONE: types_1.ContentRating.EVERYONE,
+        SUGGESTIVE: types_1.ContentRating.SUGGESTIVE,
+        MATURE: types_1.ContentRating.MATURE,
+        UNKNOWN: types_1.ContentRating.UNKNOWN
+      };
+      var STATUS = {
+        UNKNOWN: types_1.ContentStatus.UNKNOWN,
+        ONGOING: types_1.ContentStatus.ONGOING,
+        COMPLETED: types_1.ContentStatus.COMPLETED,
+        CANCELLED: types_1.ContentStatus.CANCELLED,
+        HIATUS: types_1.ContentStatus.HIATUS
+      };
+      var TYPE = {
+        MANGA: types_1.ContentType.MANGA,
+        MANHUA: types_1.ContentType.MANHUA,
+        MANHWA: types_1.ContentType.MANHWA,
+        COMIC: types_1.ContentType.COMIC,
+        NOVEL: types_1.ContentType.NOVEL
+      };
+      var MODE = {
+        PAGED_MANGA: types_1.ReadingMode.PAGED_MANGA,
+        PAGED_COMIC: types_1.ReadingMode.PAGED_COMIC,
+        PAGED_VERTICAL: types_1.ReadingMode.PAGED_VERTICAL,
+        VERTICAL: types_1.ReadingMode.VERTICAL
+      };
+      var tagOf = (entry) => {
+        var _a;
+        return {
+          id: (_a = entry.id) != null ? _a : entry.title.toLowerCase().replace(/\s+/g, "-"),
+          title: entry.title,
+          rating: entry.rating == null ? void 0 : asEnum(RATING, entry.rating, types_1.ContentRating.EVERYONE)
+        };
+      };
+      var contentFromDetails = (details, fallback) => {
+        var _a, _b, _c, _d;
+        return {
+          title: details.title || fallback.id,
+          coverImage: details.cover || fallback.coverImage,
+          bannerImage: details.banner || fallback.bannerImage,
+          artworks: details.artworks,
+          webUrl: details.webUrl,
+          rating: asEnum(RATING, details.rating, types_1.ContentRating.EVERYONE),
+          status: asEnum(STATUS, details.status, types_1.ContentStatus.UNKNOWN),
+          contentType: asEnum(TYPE, details.contentType, types_1.ContentType.MANGA),
+          readingMode: details.readingMode == null ? void 0 : asEnum(MODE, details.readingMode, types_1.ReadingMode.PAGED_MANGA),
+          summary: details.summary,
+          additionalTitles: details.additionalTitles,
+          additionalDetails: details.additionalDetails,
+          statistics: details.statistics ? {
+            rating: details.statistics.rating,
+            favorites: details.statistics.favorites,
+            bookmarks: details.statistics.bookmarks,
+            views: details.statistics.views
+          } : void 0,
+          credits: (_a = details.credits) == null ? void 0 : _a.map((credit) => ({
+            name: credit.name,
+            role: credit.role,
+            image: credit.image
+          })),
+          genres: (_b = details.genres) == null ? void 0 : _b.map(tagOf),
+          properties: (_c = details.properties) == null ? void 0 : _c.map((section, index) => {
+            var _a2;
+            return {
+              id: (_a2 = section.id) != null ? _a2 : `property-${index}`,
+              title: section.title,
+              subtitle: section.subtitle,
+              tags: section.tags.map(tagOf)
+            };
+          }),
+          links: details.links,
+          characters: (_d = details.characters) == null ? void 0 : _d.map((character) => ({
+            name: character.name,
+            role: character.role,
+            image: character.image
+          })),
+          endpoints: details.endpoints
+        };
+      };
+      exports.contentFromDetails = contentFromDetails;
+      var parseDetailsJson = (raw) => {
+        const parsed = JSON.parse(raw);
+        if (!(parsed == null ? void 0 : parsed.title) || typeof parsed.title !== "string") {
+          throw new Error("details.json must include a string title");
+        }
+        return parsed;
+      };
+      exports.parseDetailsJson = parseDetailsJson;
+    }
+  });
+
+  // __temp__/sources/r2-library/pages.js
+  var require_pages = __commonJS({
+    "__temp__/sources/r2-library/pages.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.listImageKeys = exports.openArchiveSession = exports.dataUrlForPage = exports.parsePageUrl = exports.pageUrl = exports.PAGE_HOST = void 0;
+      var fflate_1 = require_browser();
+      var crypto_1 = require_crypto();
+      var archive_1 = require_archive();
+      var MAX_ARCHIVE_BYTES = 80 * 1024 * 1024;
+      var MAX_PAGES = 400;
+      var SESSION_TTL_MS = 30 * 60 * 1e3;
+      exports.PAGE_HOST = "https://r2-library.pages";
+      var sessions = /* @__PURE__ */ new Map();
+      var mimeForName = (name) => {
+        const lower = name.toLowerCase();
+        if (lower.endsWith(".png"))
+          return "image/png";
+        if (lower.endsWith(".webp"))
+          return "image/webp";
+        if (lower.endsWith(".gif"))
+          return "image/gif";
+        if (lower.endsWith(".avif"))
+          return "image/avif";
+        if (lower.endsWith(".bmp"))
+          return "image/bmp";
+        return "image/jpeg";
+      };
+      var isImagePath = (name) => {
+        if (!name || name.endsWith("/"))
+          return false;
+        if (name.startsWith("__MACOSX/"))
+          return false;
+        if (name.split("/").some((part) => part.startsWith(".")))
+          return false;
+        return (0, archive_1.isImageName)((0, archive_1.basename)(name));
+      };
+      var pruneSessions = () => {
+        const cutoff = Date.now() - SESSION_TTL_MS;
+        for (const [id, session] of sessions) {
+          if (session.createdAt < cutoff)
+            sessions.delete(id);
+        }
+      };
+      var newSessionId = () => `s${Date.now().toString(36)}${Math.floor(Math.random() * 1e9).toString(36)}`;
+      var pageUrl = (sessionId, index) => `${exports.PAGE_HOST}/${sessionId}/${index}`;
+      exports.pageUrl = pageUrl;
+      var parsePageUrl = (url) => {
+        const match = /^https:\/\/r2-library\.pages\/([^/]+)\/(\d+)(?:\?.*)?$/i.exec(url);
+        if (!match)
+          return null;
+        return { sessionId: match[1], index: Number(match[2]) };
+      };
+      exports.parsePageUrl = parsePageUrl;
+      var dataUrlForPage = (url) => {
+        const parsed = (0, exports.parsePageUrl)(url);
+        if (!parsed)
+          return null;
+        const session = sessions.get(parsed.sessionId);
+        const page = session == null ? void 0 : session.pages[parsed.index];
+        if (!page)
+          return null;
+        return `data:${page.mime};base64,${(0, crypto_1.bytesToBase64)(page.bytes)}`;
+      };
+      exports.dataUrlForPage = dataUrlForPage;
+      var openArchiveSession = (archiveBytes) => {
+        pruneSessions();
+        if (archiveBytes.byteLength > MAX_ARCHIVE_BYTES) {
+          throw new Error(`Chapter archive is too large (${Math.round(archiveBytes.byteLength / (1024 * 1024))} MiB). Keep CBZs under ${MAX_ARCHIVE_BYTES / (1024 * 1024)} MiB, or use a chapter folder of images instead (no size limit).`);
+        }
+        let files;
+        try {
+          files = (0, fflate_1.unzipSync)(archiveBytes, {
+            filter: (file) => isImagePath(file.name)
+          });
+        } catch (error) {
+          throw new Error(`Failed to unzip chapter archive: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        const pages = Object.entries(files).filter(([, data]) => !!(data == null ? void 0 : data.length)).map(([name, data]) => ({
+          name: (0, archive_1.basename)(name),
+          full: name,
+          data
+        })).sort((left, right) => (0, archive_1.naturalCompare)(left.full, right.full)).map(({ name, data }) => ({
+          mime: mimeForName(name),
+          bytes: data
+        }));
+        if (!pages.length) {
+          throw new Error("Archive contained no readable image pages");
+        }
+        if (pages.length > MAX_PAGES) {
+          throw new Error(`Archive has ${pages.length} pages (max ${MAX_PAGES}). Split the CBZ or store images as a chapter folder.`);
+        }
+        const sessionId = newSessionId();
+        sessions.set(sessionId, { createdAt: Date.now(), pages });
+        return {
+          sessionId,
+          urls: pages.map((_, index) => (0, exports.pageUrl)(sessionId, index))
+        };
+      };
+      exports.openArchiveSession = openArchiveSession;
+      var listImageKeys = (objectKeys) => objectKeys.filter((key) => {
+        const name = (0, archive_1.basename)(key);
+        return (0, archive_1.isImageName)(name) && !(0, archive_1.isArchiveName)(name) && !name.startsWith(".");
+      }).sort((left, right) => (0, archive_1.naturalCompare)((0, archive_1.basename)(left), (0, archive_1.basename)(right)));
+      exports.listImageKeys = listImageKeys;
+    }
+  });
+
+  // __temp__/sources/r2-library/index.js
+  var require_r2_library = __commonJS({
+    "__temp__/sources/r2-library/index.js"(exports) {
+      "use strict";
+      "use httpclient";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      var types_1 = require_types();
+      var archive_1 = require_archive();
+      var config_1 = require_config();
+      var cover_1 = require_cover();
+      var details_1 = require_details();
+      var pages_1 = require_pages();
+      var r2_1 = require_r2();
+      var encodeChapterId = (chapter) => {
+        if (chapter.kind === "zip")
+          return `zip:${encodeURIComponent(chapter.key)}`;
+        if (chapter.kind === "dir")
+          return `dir:${encodeURIComponent(chapter.prefix)}`;
+        return `loose:${encodeURIComponent(chapter.prefix)}`;
+      };
+      var decodeChapterId = (chapterId) => {
+        if (chapterId.startsWith("zip:")) {
+          return { kind: "zip", value: decodeURIComponent(chapterId.slice(4)) };
+        }
+        if (chapterId.startsWith("dir:")) {
+          return { kind: "dir", value: decodeURIComponent(chapterId.slice(4)) };
+        }
+        if (chapterId.startsWith("loose:")) {
+          return { kind: "loose", value: decodeURIComponent(chapterId.slice(6)) };
+        }
+        return { kind: "zip", value: decodeURIComponent(chapterId) };
+      };
+      var rootPrefix = (prefix) => {
+        const value = prefix.replace(/^\/+|\/+$/g, "");
+        return value ? `${value}/` : "";
+      };
+      var toItem = async (config, entry, details, title) => {
+        var _a;
+        return {
+          id: entry.id,
+          title: (_a = title != null ? title : details == null ? void 0 : details.title) != null ? _a : entry.id,
+          coverImage: await (0, cover_1.resolveCoverImage)({
+            config,
+            contentId: entry.id,
+            coverKey: entry.coverKey,
+            details,
+            archives: entry.archives,
+            allowArchiveExtract: false,
+            fallbackToPlaceholder: true
+          }),
+          rating: types_1.ContentRating.EVERYONE
+        };
+      };
+      var buildEntries = async (config, folderPrefixes, root) => {
+        var _a, _b, _c;
+        const entries = [];
+        const rootId = root.replace(/\/+$/, "");
+        for (const prefix of folderPrefixes) {
+          const id = (0, archive_1.folderIdFromPrefix)(prefix, rootId);
+          if (!id || id.includes("/"))
+            continue;
+          const listed = await (0, r2_1.listAll)(config, prefix, "/");
+          const coverKey = (_a = listed.objects.find((object) => (0, archive_1.isCoverName)((0, archive_1.basename)(object.key)))) == null ? void 0 : _a.key;
+          const detailsKey = (_b = listed.objects.find((object) => (0, archive_1.isDetailsName)((0, archive_1.basename)(object.key)))) == null ? void 0 : _b.key;
+          const archives = listed.objects.filter((object) => (0, archive_1.isArchiveName)((0, archive_1.basename)(object.key))).map((object) => ({
+            key: object.key,
+            name: (0, archive_1.basename)(object.key)
+          })).sort((left, right) => (0, archive_1.naturalCompare)(left.name, right.name));
+          const folders = listed.prefixes.map((childPrefix) => {
+            const name = (0, archive_1.folderIdFromPrefix)(childPrefix, prefix.replace(/\/+$/, ""));
+            if (!name || name.includes("/"))
+              return null;
+            return {
+              kind: "dir",
+              prefix: childPrefix.endsWith("/") ? childPrefix : `${childPrefix}/`,
+              name
+            };
+          }).filter((value) => !!value).sort((left, right) => (0, archive_1.naturalCompare)(left.name, right.name));
+          const looseImages = listed.objects.filter((object) => {
+            const name = (0, archive_1.basename)(object.key);
+            return (0, archive_1.isImageName)(name) && !(0, archive_1.isCoverName)(name);
+          });
+          const chapters = [
+            ...folders,
+            ...archives.map((archive) => ({
+              kind: "zip",
+              key: archive.key,
+              name: archive.name
+            }))
+          ];
+          if (looseImages.length && !folders.length) {
+            chapters.unshift({
+              kind: "loose",
+              prefix,
+              name: "Chapter"
+            });
+          } else if (looseImages.length && folders.length) {
+            chapters.push({
+              kind: "loose",
+              prefix,
+              name: "Root"
+            });
+          }
+          chapters.sort((left, right) => (0, archive_1.naturalCompare)(left.name, right.name));
+          const inferredCover = coverKey != null ? coverKey : (_c = looseImages.sort((a, b) => (0, archive_1.naturalCompare)((0, archive_1.basename)(a.key), (0, archive_1.basename)(b.key)))[0]) == null ? void 0 : _c.key;
+          if (!chapters.length && !detailsKey && !inferredCover)
+            continue;
+          entries.push({
+            id,
+            prefix,
+            coverKey: inferredCover,
+            detailsKey,
+            archives,
+            chapters
+          });
+        }
+        return entries.sort((left, right) => (0, archive_1.naturalCompare)(left.id, right.id));
+      };
+      var listEntriesAtRoot = async (config, root) => {
+        const listed = await (0, r2_1.listAll)(config, root, "/");
+        let folderPrefixes = listed.prefixes;
+        if (!folderPrefixes.length) {
+          const flat = await (0, r2_1.listAll)(config, root);
+          const ids = /* @__PURE__ */ new Set();
+          for (const object of flat.objects) {
+            const rest = root && object.key.startsWith(root) ? object.key.slice(root.length) : object.key;
+            const id = rest.split("/").find((part) => part.length > 0);
+            if (id)
+              ids.add(id);
+          }
+          folderPrefixes = [...ids].map((id) => `${root}${id}/`);
+        }
+        return buildEntries(config, folderPrefixes, root);
+      };
+      var listEntries = async (config) => {
+        const configuredRoot = rootPrefix(config.prefix);
+        let entries = await listEntriesAtRoot(config, configuredRoot);
+        if (!entries.length && configuredRoot) {
+          entries = await listEntriesAtRoot(config, "");
+        }
+        return entries;
+      };
+      var loadDetails = async (config, entry) => {
+        if (!entry.detailsKey)
+          return null;
+        try {
+          return (0, details_1.parseDetailsJson)(await (0, r2_1.getObjectText)(config, entry.detailsKey));
+        } catch (error) {
+          console.log(`Failed to parse details for ${entry.id}: ${String(error)}`);
+          return null;
+        }
+      };
+      var findEntry = async (config, contentId) => {
+        const entry = (await listEntries(config)).find((item) => item.id === contentId);
+        if (!entry) {
+          const root = rootPrefix(config.prefix) || "(bucket root)/";
+          throw new Error(`Manga folder not found under ${root}${contentId}/`);
+        }
+        return entry;
+      };
+      var Target = class {
+        constructor() {
+          __publicField(this, "getConfiguration", () => ({
+            endpoint: ["anilist", "mal"]
+          }));
+          __publicField(this, "getSettingsPage", async () => {
+            var _a, _b, _c, _d, _e;
+            const accountId = (_a = await ObjectStore.string(config_1.SETTINGS.accountId)) != null ? _a : "";
+            const accessKeyId = (_b = await ObjectStore.string(config_1.SETTINGS.accessKeyId)) != null ? _b : "";
+            const bucket = (_c = await ObjectStore.string(config_1.SETTINGS.bucket)) != null ? _c : "";
+            const endpoint = (_d = await ObjectStore.string(config_1.SETTINGS.endpoint)) != null ? _d : "";
+            const prefix = (_e = await ObjectStore.string(config_1.SETTINGS.prefix)) != null ? _e : "";
+            const hasSecret = !!await ObjectStore.string(config_1.SETTINGS.secretAccessKey);
+            return {
+              sections: [
+                {
+                  header: "Cloudflare R2",
+                  footer: "Object Read API token required. Leave Endpoint blank for the default R2 S3 URL. Leave Root Prefix empty when title folders sit at the bucket root. Chapters can be .cbz/.zip OR folders of images (preferred for large chapters).",
+                  views: [
+                    (0, types_1.UITextField)({
+                      id: config_1.SETTINGS.accountId,
+                      title: "Account ID",
+                      currentValue: accountId,
+                      placeholder: "Cloudflare account id"
+                    }),
+                    (0, types_1.UITextField)({
+                      id: config_1.SETTINGS.accessKeyId,
+                      title: "Access Key ID",
+                      currentValue: accessKeyId
+                    }),
+                    (0, types_1.UITextField)({
+                      id: config_1.SETTINGS.secretAccessKey,
+                      title: "Secret Access Key",
+                      placeholder: hasSecret ? "Leave blank to keep the saved secret" : "R2 secret access key",
+                      isSecure: true
+                    }),
+                    (0, types_1.UITextField)({
+                      id: config_1.SETTINGS.bucket,
+                      title: "Bucket",
+                      currentValue: bucket,
+                      placeholder: "manga"
+                    }),
+                    (0, types_1.UITextField)({
+                      id: config_1.SETTINGS.endpoint,
+                      title: "S3 Endpoint (optional)",
+                      currentValue: endpoint,
+                      placeholder: "https://<accountId>.r2.cloudflarestorage.com"
+                    }),
+                    (0, types_1.UITextField)({
+                      id: config_1.SETTINGS.prefix,
+                      title: "Root Prefix",
+                      currentValue: prefix,
+                      placeholder: "(empty = bucket root)"
+                    })
+                  ]
+                }
+              ]
+            };
+          });
+          __publicField(this, "onFormSubmitted", async (_id, data) => {
+            await (0, config_1.saveConfig)(data);
+          });
+          __publicField(this, "getHomePage", async () => ({
+            feeds: [
+              {
+                id: "library",
+                title: "Library",
+                content: {
+                  list: {
+                    key: "all",
+                    disableSorting: true
+                  }
+                }
+              }
+            ]
+          }));
+          __publicField(this, "getSearchResults", async (request, page) => {
+            var _a, _b, _c, _d;
+            if (page > 1) {
+              return { items: [], isLastPage: true, total: 0 };
+            }
+            const config = await (0, config_1.loadConfig)();
+            const entries = await listEntries(config);
+            const query = (_a = request.query) == null ? void 0 : _a.trim().toLowerCase();
+            const items = [];
+            for (const entry of entries) {
+              const details = await loadDetails(config, entry);
+              const title = (_b = details == null ? void 0 : details.title) != null ? _b : entry.id;
+              if (query) {
+                const haystack = [
+                  title,
+                  entry.id,
+                  ...(_c = details == null ? void 0 : details.additionalTitles) != null ? _c : [],
+                  (_d = details == null ? void 0 : details.summary) != null ? _d : ""
+                ].join(" ").toLowerCase();
+                if (!haystack.includes(query))
+                  continue;
+              }
+              items.push(await toItem(config, entry, details, title));
+            }
+            return { items, isLastPage: true, total: items.length };
+          });
+          __publicField(this, "getItemList", async (_request, page) => {
+            var _a;
+            if (page > 1) {
+              return { items: [], isLastPage: true, total: 0 };
+            }
+            const config = await (0, config_1.loadConfig)();
+            const entries = await listEntries(config);
+            const items = [];
+            for (const entry of entries) {
+              const details = await loadDetails(config, entry);
+              items.push(await toItem(config, entry, details, (_a = details == null ? void 0 : details.title) != null ? _a : entry.id));
+            }
+            return { items, isLastPage: true, total: items.length };
+          });
+          __publicField(this, "getContent", async (contentId) => {
+            const config = await (0, config_1.loadConfig)();
+            const entry = await findEntry(config, contentId);
+            const details = await loadDetails(config, entry);
+            let coverKey = entry.coverKey;
+            if (!coverKey) {
+              const firstDir = entry.chapters.find((chapter) => chapter.kind === "dir");
+              if (firstDir && firstDir.kind === "dir") {
+                const listed = await (0, r2_1.listAll)(config, firstDir.prefix);
+                coverKey = (0, pages_1.listImageKeys)(listed.objects.map((object) => object.key))[0];
+              }
+            }
+            const coverImage = await (0, cover_1.resolveCoverImage)({
+              config,
+              contentId,
+              coverKey,
+              details,
+              archives: entry.archives,
+              allowArchiveExtract: true,
+              fallbackToPlaceholder: true
+            });
+            if (!coverImage) {
+              throw new Error(`Missing cover for ${contentId}. Add cover.(png|jpg|webp), put images in a chapter folder, or set details.cover.`);
+            }
+            if (details) {
+              return (0, details_1.contentFromDetails)({ ...details, cover: void 0 }, { id: contentId, coverImage });
+            }
+            return {
+              title: contentId,
+              coverImage,
+              rating: types_1.ContentRating.EVERYONE,
+              status: types_1.ContentStatus.UNKNOWN,
+              contentType: types_1.ContentType.MANGA,
+              summary: `Imported from R2 folder ${contentId}/`,
+              additionalDetails: {
+                Folder: contentId,
+                Chapters: String(entry.chapters.length)
+              }
+            };
+          });
+          __publicField(this, "getChapters", async (contentId) => {
+            const config = await (0, config_1.loadConfig)();
+            const entry = await findEntry(config, contentId);
+            return entry.chapters.map((chapter, index) => ({
+              id: encodeChapterId(chapter),
+              index,
+              number: (0, archive_1.parseChapterNumber)(chapter.name, index + 1),
+              language: "en",
+              title: chapter.name.replace(/\.(cbz|zip)$/i, ""),
+              date: /* @__PURE__ */ new Date()
+            }));
+          });
+          __publicField(this, "getChapterPages", async (_contentId, chapterId) => {
+            const config = await (0, config_1.loadConfig)();
+            const decoded = decodeChapterId(chapterId);
+            if (decoded.kind === "dir" || decoded.kind === "loose") {
+              const prefix = decoded.value.endsWith("/") ? decoded.value : `${decoded.value}/`;
+              const listed = decoded.kind === "loose" ? await (0, r2_1.listAll)(config, prefix, "/") : await (0, r2_1.listAll)(config, prefix);
+              const keys = decoded.kind === "loose" ? (0, pages_1.listImageKeys)(listed.objects.filter((object) => {
+                const name = (0, archive_1.basename)(object.key);
+                return (0, archive_1.isImageName)(name) && !(0, archive_1.isCoverName)(name);
+              }).map((object) => object.key)) : (0, pages_1.listImageKeys)(listed.objects.map((object) => object.key));
+              if (!keys.length) {
+                throw new Error(`No images found under ${prefix}`);
+              }
+              return keys.map((key) => ({
+                url: (0, r2_1.presignGet)(config, key, 60 * 60 * 6)
+              }));
+            }
+            const bytes = await (0, r2_1.getObjectBytes)(config, decoded.value);
+            const { urls } = (0, pages_1.openArchiveSession)(bytes);
+            return urls.map((url) => ({ url }));
+          });
+          /**
+           * Resolve session page URLs to data: URIs so Nuke never hits a fake host.
+           * Presigned R2 URLs pass through unchanged.
+           */
+          __publicField(this, "willRequestImage", async (request) => {
+            const url = typeof request === "string" ? request : request.url;
+            const dataUrl = (0, pages_1.dataUrlForPage)(url);
+            if (!dataUrl) {
+              return typeof request === "string" ? { url: request } : request;
+            }
+            return typeof request === "string" ? { url: dataUrl } : { ...request, url: dataUrl };
+          });
+        }
+      };
+      __publicField(Target, "info", {
+        id: "en.r2-library",
+        name: "R2 Library",
+        version: 1.6,
+        website: "https://developers.cloudflare.com/r2/",
+        thumbnail: "r2-library.png",
+        languages: ["en"],
+        rating: types_1.ContentRating.EVERYONE
+      });
+      exports.default = Target;
+    }
+  });
+
+  // __temp__/wrappers/r2-library.js
+  var require_r2_library2 = __commonJS({
+    "__temp__/wrappers/r2-library.js"(exports) {
+      init_Buffer();
+      init_process();
+      var runtime = require_runtime();
+      var sourceModule = require_r2_library();
+      var cls = runtime.resolveDefaultExport(sourceModule);
+      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.6, "website": "https://developers.cloudflare.com/r2/", "thumbnail": "r2-library.png", "languages": ["en"], "rating": 0 };
+      exports.SourceConfiguration = null;
+      exports.bootstrap = function bootstrap() {
+        var args = null;
+        return runtime.instantiateSource(cls, args ? { args } : void 0);
+      };
+    }
+  });
+  return require_r2_library2();
+})();

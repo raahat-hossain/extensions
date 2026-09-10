@@ -50,12 +50,18 @@ import { getObjectBytes, getObjectText, imageUrl, listAll } from "./r2";
 import { isAbsoluteHttpUrl, isRemoteArchiveUrl, refererForImage } from "./sites";
 import { fetchBytes } from "../_shared/http";
 
+type ChapterMeta = {
+  name: string;
+  number?: number;
+  scanlator?: string;
+};
+
 type ChapterRef =
-  | { kind: "zip"; key: string; name: string }
-  | { kind: "dir"; prefix: string; name: string }
-  | { kind: "loose"; prefix: string; name: string }
-  | { kind: "url"; url: string; name: string }
-  | { kind: "pages"; urls: string[]; name: string };
+  | (ChapterMeta & { kind: "zip"; key: string })
+  | (ChapterMeta & { kind: "dir"; prefix: string })
+  | (ChapterMeta & { kind: "loose"; prefix: string })
+  | (ChapterMeta & { kind: "url"; url: string })
+  | (ChapterMeta & { kind: "pages"; urls: string[] });
 
 type EntryAssets = {
   id: string;
@@ -105,26 +111,6 @@ const rootPrefix = (prefix: string): string => {
   const value = prefix.replace(/^\/+|\/+$/g, "");
   return value ? `${value}/` : "";
 };
-
-const toItem = async (
-  config: R2Config,
-  entry: EntryAssets,
-  details: DetailsFile | null,
-  title?: string,
-): Promise<Item> => ({
-  id: entry.id,
-  title: title ?? details?.title ?? entry.id,
-  coverImage: await resolveCoverImage({
-    config,
-    contentId: entry.id,
-    coverKey: entry.coverKey,
-    details,
-    archives: entry.archives,
-    allowArchiveExtract: false,
-    fallbackToPlaceholder: true,
-  }),
-    rating: ContentRating.MATURE,
-});
 
 const buildEntries = async (
   config: R2Config,
@@ -288,33 +274,47 @@ const findEntry = async (
 
 const jsonChapterToRef = (chapter: ParsedChapter, seriesPrefix: string): ChapterRef => {
   const url = chapter.url;
-  const name = chapter.title;
+  const meta = {
+    name: chapter.title,
+    number: chapter.number,
+    scanlator: chapter.scanlator,
+  };
   const listed = decodePagesChapter(url);
-  if (listed) return { kind: "pages", urls: listed, name };
+  if (listed) return { kind: "pages", urls: listed, ...meta };
   if (isFolderChapter(url)) {
     return {
       kind: "dir",
       prefix: url.endsWith("/") ? url : `${url}/`,
-      name,
+      ...meta,
     };
   }
-  if (isBucketArchive(url)) return { kind: "zip", key: url, name };
+  if (isBucketArchive(url)) return { kind: "zip", key: url, ...meta };
   if (isAbsoluteHttpUrl(url) || url.startsWith("pages:")) {
-    return { kind: "url", url, name };
+    return { kind: "url", url, ...meta };
   }
   const prefix = seriesPrefix.replace(/\/+$/, "");
   const resolved = url.startsWith(prefix) || !prefix ? url : `${prefix}/${url.replace(/^\/+/, "")}`;
-  if (isArchiveName(basename(resolved))) return { kind: "zip", key: resolved, name };
-  if (resolved.endsWith("/")) return { kind: "dir", prefix: resolved, name };
-  return { kind: "url", url: resolved, name };
+  if (isArchiveName(basename(resolved))) return { kind: "zip", key: resolved, ...meta };
+  if (resolved.endsWith("/")) return { kind: "dir", prefix: resolved, ...meta };
+  return { kind: "url", url: resolved, ...meta };
 };
 
 const loadJsonChapters = async (
   config: R2Config,
   entry: EntryAssets,
+  details?: DetailsFile | null,
 ): Promise<ChapterRef[]> => {
   const parsed: ParsedChapter[] = [];
-  if (entry.detailsKey) {
+  if (details) {
+    if (details.chapters != null) {
+      parsed.push(
+        ...parseChaptersJson(
+          JSON.stringify({ chapters: details.chapters }),
+          entry.prefix,
+        ),
+      );
+    }
+  } else if (entry.detailsKey) {
     try {
       parsed.push(
         ...parseChaptersJson(await getObjectText(config, entry.detailsKey), entry.prefix),
@@ -346,11 +346,15 @@ const chapterFingerprint = (chapter: ChapterRef): string => {
   return `pages:${chapter.urls.join("|")}`;
 };
 
+const chapterSortNumber = (chapter: ChapterRef): number =>
+  chapter.number ?? parseChapterNumber(chapter.name, 0);
+
 const mergedChapters = async (
   config: R2Config,
   entry: EntryAssets,
+  details?: DetailsFile | null,
 ): Promise<ChapterRef[]> => {
-  const extra = await loadJsonChapters(config, entry);
+  const extra = await loadJsonChapters(config, entry, details);
   const seen = new Set<string>();
   const merged: ChapterRef[] = [];
   for (const chapter of [...entry.chapters, ...extra]) {
@@ -360,18 +364,53 @@ const mergedChapters = async (
     merged.push(chapter);
   }
   merged.sort((left, right) => {
-    const delta =
-      parseChapterNumber(left.name, 0) - parseChapterNumber(right.name, 0);
+    const delta = chapterSortNumber(left) - chapterSortNumber(right);
     return delta !== 0 ? delta : naturalCompare(left.name, right.name);
   });
   return merged;
+};
+
+const coverTargets = (chapters: ChapterRef[]) => ({
+  folders: chapters
+    .filter((chapter): chapter is ChapterRef & { kind: "dir" } => chapter.kind === "dir")
+    .map((chapter) => ({ prefix: chapter.prefix, name: chapter.name })),
+  remotes: chapters
+    .filter((chapter): chapter is ChapterRef & { kind: "url" } => chapter.kind === "url")
+    .map((chapter) => ({ url: chapter.url, name: chapter.name })),
+});
+
+const toItem = async (
+  config: R2Config,
+  entry: EntryAssets,
+  details: DetailsFile | null,
+  title?: string,
+): Promise<Item> => {
+  const chapters = await mergedChapters(config, entry, details);
+  const { folders, remotes } = coverTargets(chapters);
+  return {
+    id: entry.id,
+    title: title ?? details?.title ?? entry.id,
+    coverImage: await resolveCoverImage({
+      config,
+      contentId: entry.id,
+      seriesPrefix: entry.prefix,
+      coverKey: entry.coverKey,
+      details,
+      archives: entry.archives,
+      folders,
+      remotes,
+      allowArchiveExtract: false,
+      fallbackToPlaceholder: true,
+    }),
+    rating: ContentRating.MATURE,
+  };
 };
 
 export default class Target {
   static info: SourceInfo = {
     id: "en.r2-library",
     name: "R2 Library",
-    version: 1.7,
+    version: 1.8,
     website: "https://developers.cloudflare.com/r2/",
     thumbnail: "r2-library.png",
     languages: ["en"],
@@ -524,31 +563,18 @@ export default class Target {
     const config = await loadConfig();
     const entry = await findEntry(config, contentId);
     const details = await loadDetails(config, entry);
-
-    let coverKey = entry.coverKey;
-    if (!coverKey) {
-      // Fall back to first page of the first folder chapter.
-      const firstDir = entry.chapters.find((chapter) => chapter.kind === "dir");
-      if (firstDir && firstDir.kind === "dir") {
-        const listed = await listAll(config, firstDir.prefix);
-        coverKey = listImageKeys(listed.objects.map((object) => object.key))[0];
-      }
-    }
-
-    const chapters = await mergedChapters(config, entry);
+    const chapters = await mergedChapters(config, entry, details);
+    const { folders, remotes } = coverTargets(chapters);
 
     const coverImage = await resolveCoverImage({
       config,
       contentId,
-      coverKey,
+      seriesPrefix: entry.prefix,
+      coverKey: entry.coverKey,
       details,
       archives: entry.archives,
-      folders: chapters
-        .filter((chapter): chapter is ChapterRef & { kind: "dir" } => chapter.kind === "dir")
-        .map((chapter) => ({ prefix: chapter.prefix, name: chapter.name })),
-      remotes: chapters
-        .filter((chapter): chapter is ChapterRef & { kind: "url" } => chapter.kind === "url")
-        .map((chapter) => ({ url: chapter.url, name: chapter.name })),
+      folders,
+      remotes,
       allowArchiveExtract: true,
       fallbackToPlaceholder: true,
     });
@@ -575,7 +601,7 @@ export default class Target {
       summary: `Imported from R2 folder ${contentId}/`,
       additionalDetails: {
         Folder: contentId,
-        Chapters: String(entry.chapters.length),
+        Chapters: String(chapters.length),
       },
     };
   };
@@ -583,15 +609,25 @@ export default class Target {
   getChapters = async (contentId: string): Promise<Chapter[]> => {
     const config = await loadConfig();
     const entry = await findEntry(config, contentId);
-    const chapters = await mergedChapters(config, entry);
+    const details = await loadDetails(config, entry);
+    const chapters = await mergedChapters(config, entry, details);
 
     return chapters.map((chapter, index) => ({
       id: encodeChapterId(chapter),
       index,
-      number: parseChapterNumber(chapter.name, index + 1),
+      number: chapter.number ?? parseChapterNumber(chapter.name, index + 1),
       language: "en",
       title: chapter.name.replace(/\.(cbz|zip)$/i, ""),
       date: new Date(),
+      providers: chapter.scanlator
+        ? [
+            {
+              id: chapter.scanlator.toLowerCase().replace(/\s+/g, "-"),
+              name: chapter.scanlator,
+              links: [],
+            },
+          ]
+        : undefined,
     }));
   };
 

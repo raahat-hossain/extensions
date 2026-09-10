@@ -5779,7 +5779,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       init_Buffer();
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
-      exports.resolveCoverImage = exports.PLACEHOLDER_COVER = void 0;
+      exports.resolveCoverImage = exports.classifyCoverSpec = exports.relativeCoverKey = exports.PLACEHOLDER_COVER = void 0;
       var archive_1 = require_archive();
       var gallery_1 = require_gallery();
       var pages_1 = require_pages();
@@ -5796,87 +5796,128 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
           return name === target || name.replace(/\.[^.]+$/, "") === target.replace(/\.[^.]+$/, "");
         });
       };
+      var relativeCoverKey = (cover, seriesPrefix) => {
+        const prefix = seriesPrefix.replace(/\/+$/, "");
+        const trimmed = cover.replace(/^\/+/, "");
+        const alreadyUnder = !!prefix && (cover === prefix || cover.startsWith(`${prefix}/`) || trimmed.startsWith(`${prefix}/`));
+        const key = alreadyUnder ? trimmed : prefix ? `${prefix}/${trimmed}` : trimmed;
+        return (0, archive_1.isImageName)((0, archive_1.basename)(key)) ? key : null;
+      };
+      exports.relativeCoverKey = relativeCoverKey;
+      var classifyCoverSpec = (cover, seriesPrefix) => {
+        const trimmed = cover.trim();
+        if (!trimmed)
+          return null;
+        if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith("data:")) {
+          return { kind: "direct", value: trimmed };
+        }
+        const ref = (0, archive_1.parseChapterPageRef)(trimmed);
+        if (ref)
+          return { kind: "ref", ref };
+        const key = (0, exports.relativeCoverKey)(trimmed, seriesPrefix);
+        return key ? { kind: "key", key } : null;
+      };
+      exports.classifyCoverSpec = classifyCoverSpec;
+      var coverCacheKey = (config, contentId, coverSpec) => `${config.bucket}:${contentId}\0${coverSpec != null ? coverSpec : ""}`;
+      var resolveCoverRef = async (options) => {
+        const { config, ref, archives, folders, remotes, allowArchiveExtract } = options;
+        const folder = folders.find((entry) => (0, archive_1.chapterNameMatches)(entry.name, ref.chapter));
+        if (folder) {
+          const listed = await (0, r2_1.listAll)(config, folder.prefix);
+          const keys = (0, pages_1.listImageKeys)(listed.objects.map((object) => object.key));
+          const key = pickImage(keys, ref.page);
+          if (key)
+            return (0, r2_1.imageUrl)(config, key, 60 * 60);
+        }
+        if (allowArchiveExtract) {
+          const archive = (0, archive_1.findArchiveByChapterName)(archives, ref.chapter);
+          if (archive) {
+            try {
+              const bytes = await (0, r2_1.getObjectBytes)(config, archive.key);
+              return (0, archive_1.extractArchivePageDataUrl)(bytes, ref.page);
+            } catch {
+            }
+          }
+        }
+        const remote = remotes.find((entry) => (0, archive_1.chapterNameMatches)(entry.name, ref.chapter));
+        if (remote) {
+          try {
+            const pages = await (0, gallery_1.pagesForChapterUrl)(remote.url);
+            const urls = (0, gallery_1.imageUrlsOf)(pages);
+            return pickImage(urls, ref.page);
+          } catch {
+          }
+        }
+        return void 0;
+      };
       var resolveCoverImage = async (options) => {
-        var _a, _b;
-        const { config, contentId, coverKey, details, archives, folders = [], remotes = [], allowArchiveExtract = true, fallbackToPlaceholder = false } = options;
-        if (coverKey) {
-          return (0, r2_1.imageUrl)(config, coverKey, 60 * 60);
-        }
-        const coverValue = (_a = details == null ? void 0 : details.cover) == null ? void 0 : _a.trim();
+        var _a;
+        const { config, contentId, seriesPrefix = "", coverKey, details, archives, folders = [], remotes = [], allowArchiveExtract = true, fallbackToPlaceholder = false } = options;
+        const coverValue = ((_a = details == null ? void 0 : details.cover) == null ? void 0 : _a.trim()) || void 0;
+        const cacheKey = coverCacheKey(config, contentId, coverValue);
+        const cached = coverCache.get(cacheKey);
+        if (cached)
+          return cached;
         if (coverValue) {
-          if (/^https?:\/\//i.test(coverValue) || coverValue.startsWith("data:")) {
-            return coverValue;
+          const spec = (0, exports.classifyCoverSpec)(coverValue, seriesPrefix);
+          let resolved;
+          if ((spec == null ? void 0 : spec.kind) === "direct")
+            resolved = spec.value;
+          else if ((spec == null ? void 0 : spec.kind) === "key")
+            resolved = (0, r2_1.imageUrl)(config, spec.key, 60 * 60);
+          else if ((spec == null ? void 0 : spec.kind) === "ref") {
+            resolved = await resolveCoverRef({
+              config,
+              ref: spec.ref,
+              archives,
+              folders,
+              remotes,
+              allowArchiveExtract
+            });
           }
-          const ref = (0, archive_1.parseChapterPageRef)(coverValue);
-          if (ref && allowArchiveExtract) {
-            const cacheKey = `${config.bucket}:${contentId}:${ref.chapter}:${ref.page}`;
-            const cached = coverCache.get(cacheKey);
-            if (cached)
-              return cached;
-            const folder = folders.find((entry) => (0, archive_1.chapterNameMatches)(entry.name, ref.chapter));
-            if (folder) {
-              const listed = await (0, r2_1.listAll)(config, folder.prefix);
-              const keys = (0, pages_1.listImageKeys)(listed.objects.map((object) => object.key));
-              const key = pickImage(keys, ref.page);
-              if (key) {
-                const url = (0, r2_1.imageUrl)(config, key, 60 * 60);
-                coverCache.set(cacheKey, url);
-                return url;
-              }
+          if (resolved) {
+            coverCache.set(cacheKey, resolved);
+            return resolved;
+          }
+        }
+        const fallback = async () => {
+          if (coverKey)
+            return (0, r2_1.imageUrl)(config, coverKey, 60 * 60);
+          if (folders[0]) {
+            try {
+              const listed = await (0, r2_1.listAll)(config, folders[0].prefix);
+              const key = (0, pages_1.listImageKeys)(listed.objects.map((object) => object.key))[0];
+              if (key)
+                return (0, r2_1.imageUrl)(config, key, 60 * 60);
+            } catch {
             }
-            const archive = (0, archive_1.findArchiveByChapterName)(archives, ref.chapter);
-            if (archive) {
-              try {
-                const bytes = await (0, r2_1.getObjectBytes)(config, archive.key);
-                const dataUrl = (0, archive_1.extractArchivePageDataUrl)(bytes, ref.page);
-                coverCache.set(cacheKey, dataUrl);
-                return dataUrl;
-              } catch {
-              }
-            }
-            const remote = remotes.find((entry) => (0, archive_1.chapterNameMatches)(entry.name, ref.chapter));
-            if (remote) {
-              try {
-                const pages = await (0, gallery_1.pagesForChapterUrl)(remote.url);
-                const urls = (0, gallery_1.imageUrlsOf)(pages);
-                const picked = (_b = pickImage(urls, ref.page)) != null ? _b : urls[0];
-                if (picked) {
-                  coverCache.set(cacheKey, picked);
-                  return picked;
+          }
+          if (allowArchiveExtract && archives[0]) {
+            try {
+              const bytes = await (0, r2_1.getObjectBytes)(config, archives[0].key);
+              for (const guess of [
+                "1",
+                "1.png",
+                "01.png",
+                "001.png",
+                "1.jpg",
+                "01.jpg",
+                "cover.png"
+              ]) {
+                try {
+                  return (0, archive_1.extractArchivePageDataUrl)(bytes, guess);
+                } catch {
                 }
-              } catch {
               }
+            } catch {
             }
           }
-        }
-        if (allowArchiveExtract && folders[0]) {
-          try {
-            const listed = await (0, r2_1.listAll)(config, folders[0].prefix);
-            const key = (0, pages_1.listImageKeys)(listed.objects.map((object) => object.key))[0];
-            if (key)
-              return (0, r2_1.imageUrl)(config, key, 60 * 60);
-          } catch {
-          }
-        }
-        if (allowArchiveExtract && archives[0]) {
-          const cacheKey = `${config.bucket}:${contentId}:__first__`;
-          const cached = coverCache.get(cacheKey);
-          if (cached)
-            return cached;
-          try {
-            const bytes = await (0, r2_1.getObjectBytes)(config, archives[0].key);
-            for (const guess of ["1", "1.png", "01.png", "001.png", "1.jpg", "01.jpg", "cover.png"]) {
-              try {
-                const dataUrl = (0, archive_1.extractArchivePageDataUrl)(bytes, guess);
-                coverCache.set(cacheKey, dataUrl);
-                return dataUrl;
-              } catch {
-              }
-            }
-          } catch {
-          }
-        }
-        return fallbackToPlaceholder ? exports.PLACEHOLDER_COVER : void 0;
+          return fallbackToPlaceholder ? exports.PLACEHOLDER_COVER : void 0;
+        };
+        const url = await fallback();
+        if (url && !coverValue)
+          coverCache.set(cacheKey, url);
+        return url;
       };
       exports.resolveCoverImage = resolveCoverImage;
     }
@@ -6075,23 +6116,6 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
         const value = prefix.replace(/^\/+|\/+$/g, "");
         return value ? `${value}/` : "";
       };
-      var toItem = async (config, entry, details, title) => {
-        var _a;
-        return {
-          id: entry.id,
-          title: (_a = title != null ? title : details == null ? void 0 : details.title) != null ? _a : entry.id,
-          coverImage: await (0, cover_1.resolveCoverImage)({
-            config,
-            contentId: entry.id,
-            coverKey: entry.coverKey,
-            details,
-            archives: entry.archives,
-            allowArchiveExtract: false,
-            fallbackToPlaceholder: true
-          }),
-          rating: types_1.ContentRating.MATURE
-        };
-      };
       var buildEntries = async (config, folderPrefixes, root) => {
         var _a, _b, _c, _d;
         const entries = [];
@@ -6203,33 +6227,41 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       };
       var jsonChapterToRef = (chapter, seriesPrefix) => {
         const url = chapter.url;
-        const name = chapter.title;
+        const meta = {
+          name: chapter.title,
+          number: chapter.number,
+          scanlator: chapter.scanlator
+        };
         const listed = (0, chapters_1.decodePagesChapter)(url);
         if (listed)
-          return { kind: "pages", urls: listed, name };
+          return { kind: "pages", urls: listed, ...meta };
         if ((0, chapters_1.isFolderChapter)(url)) {
           return {
             kind: "dir",
             prefix: url.endsWith("/") ? url : `${url}/`,
-            name
+            ...meta
           };
         }
         if ((0, chapters_1.isBucketArchive)(url))
-          return { kind: "zip", key: url, name };
+          return { kind: "zip", key: url, ...meta };
         if ((0, sites_1.isAbsoluteHttpUrl)(url) || url.startsWith("pages:")) {
-          return { kind: "url", url, name };
+          return { kind: "url", url, ...meta };
         }
         const prefix = seriesPrefix.replace(/\/+$/, "");
         const resolved = url.startsWith(prefix) || !prefix ? url : `${prefix}/${url.replace(/^\/+/, "")}`;
         if ((0, archive_1.isArchiveName)((0, archive_1.basename)(resolved)))
-          return { kind: "zip", key: resolved, name };
+          return { kind: "zip", key: resolved, ...meta };
         if (resolved.endsWith("/"))
-          return { kind: "dir", prefix: resolved, name };
-        return { kind: "url", url: resolved, name };
+          return { kind: "dir", prefix: resolved, ...meta };
+        return { kind: "url", url: resolved, ...meta };
       };
-      var loadJsonChapters = async (config, entry) => {
+      var loadJsonChapters = async (config, entry, details) => {
         const parsed = [];
-        if (entry.detailsKey) {
+        if (details) {
+          if (details.chapters != null) {
+            parsed.push(...(0, chapters_1.parseChaptersJson)(JSON.stringify({ chapters: details.chapters }), entry.prefix));
+          }
+        } else if (entry.detailsKey) {
           try {
             parsed.push(...(0, chapters_1.parseChaptersJson)(await (0, r2_1.getObjectText)(config, entry.detailsKey), entry.prefix));
           } catch (error) {
@@ -6256,8 +6288,12 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
           return `url:${chapter.url}`;
         return `pages:${chapter.urls.join("|")}`;
       };
-      var mergedChapters = async (config, entry) => {
-        const extra = await loadJsonChapters(config, entry);
+      var chapterSortNumber = (chapter) => {
+        var _a;
+        return (_a = chapter.number) != null ? _a : (0, archive_1.parseChapterNumber)(chapter.name, 0);
+      };
+      var mergedChapters = async (config, entry, details) => {
+        const extra = await loadJsonChapters(config, entry, details);
         const seen = /* @__PURE__ */ new Set();
         const merged = [];
         for (const chapter of [...entry.chapters, ...extra]) {
@@ -6268,10 +6304,36 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
           merged.push(chapter);
         }
         merged.sort((left, right) => {
-          const delta = (0, archive_1.parseChapterNumber)(left.name, 0) - (0, archive_1.parseChapterNumber)(right.name, 0);
+          const delta = chapterSortNumber(left) - chapterSortNumber(right);
           return delta !== 0 ? delta : (0, archive_1.naturalCompare)(left.name, right.name);
         });
         return merged;
+      };
+      var coverTargets = (chapters) => ({
+        folders: chapters.filter((chapter) => chapter.kind === "dir").map((chapter) => ({ prefix: chapter.prefix, name: chapter.name })),
+        remotes: chapters.filter((chapter) => chapter.kind === "url").map((chapter) => ({ url: chapter.url, name: chapter.name }))
+      });
+      var toItem = async (config, entry, details, title) => {
+        var _a;
+        const chapters = await mergedChapters(config, entry, details);
+        const { folders, remotes } = coverTargets(chapters);
+        return {
+          id: entry.id,
+          title: (_a = title != null ? title : details == null ? void 0 : details.title) != null ? _a : entry.id,
+          coverImage: await (0, cover_1.resolveCoverImage)({
+            config,
+            contentId: entry.id,
+            seriesPrefix: entry.prefix,
+            coverKey: entry.coverKey,
+            details,
+            archives: entry.archives,
+            folders,
+            remotes,
+            allowArchiveExtract: false,
+            fallbackToPlaceholder: true
+          }),
+          rating: types_1.ContentRating.MATURE
+        };
       };
       var Target = class {
         constructor() {
@@ -6400,23 +6462,17 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
             const config = await (0, config_1.loadConfig)();
             const entry = await findEntry(config, contentId);
             const details = await loadDetails(config, entry);
-            let coverKey = entry.coverKey;
-            if (!coverKey) {
-              const firstDir = entry.chapters.find((chapter) => chapter.kind === "dir");
-              if (firstDir && firstDir.kind === "dir") {
-                const listed = await (0, r2_1.listAll)(config, firstDir.prefix);
-                coverKey = (0, pages_1.listImageKeys)(listed.objects.map((object) => object.key))[0];
-              }
-            }
-            const chapters = await mergedChapters(config, entry);
+            const chapters = await mergedChapters(config, entry, details);
+            const { folders, remotes } = coverTargets(chapters);
             const coverImage = await (0, cover_1.resolveCoverImage)({
               config,
               contentId,
-              coverKey,
+              seriesPrefix: entry.prefix,
+              coverKey: entry.coverKey,
               details,
               archives: entry.archives,
-              folders: chapters.filter((chapter) => chapter.kind === "dir").map((chapter) => ({ prefix: chapter.prefix, name: chapter.name })),
-              remotes: chapters.filter((chapter) => chapter.kind === "url").map((chapter) => ({ url: chapter.url, name: chapter.name })),
+              folders,
+              remotes,
               allowArchiveExtract: true,
               fallbackToPlaceholder: true
             });
@@ -6435,22 +6491,33 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
               summary: `Imported from R2 folder ${contentId}/`,
               additionalDetails: {
                 Folder: contentId,
-                Chapters: String(entry.chapters.length)
+                Chapters: String(chapters.length)
               }
             };
           });
           __publicField(this, "getChapters", async (contentId) => {
             const config = await (0, config_1.loadConfig)();
             const entry = await findEntry(config, contentId);
-            const chapters = await mergedChapters(config, entry);
-            return chapters.map((chapter, index) => ({
-              id: encodeChapterId(chapter),
-              index,
-              number: (0, archive_1.parseChapterNumber)(chapter.name, index + 1),
-              language: "en",
-              title: chapter.name.replace(/\.(cbz|zip)$/i, ""),
-              date: /* @__PURE__ */ new Date()
-            }));
+            const details = await loadDetails(config, entry);
+            const chapters = await mergedChapters(config, entry, details);
+            return chapters.map((chapter, index) => {
+              var _a;
+              return {
+                id: encodeChapterId(chapter),
+                index,
+                number: (_a = chapter.number) != null ? _a : (0, archive_1.parseChapterNumber)(chapter.name, index + 1),
+                language: "en",
+                title: chapter.name.replace(/\.(cbz|zip)$/i, ""),
+                date: /* @__PURE__ */ new Date(),
+                providers: chapter.scanlator ? [
+                  {
+                    id: chapter.scanlator.toLowerCase().replace(/\s+/g, "-"),
+                    name: chapter.scanlator,
+                    links: []
+                  }
+                ] : void 0
+              };
+            });
           });
           __publicField(this, "getChapterPages", async (_contentId, chapterId) => {
             const config = await (0, config_1.loadConfig)();
@@ -6512,7 +6579,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       __publicField(Target, "info", {
         id: "en.r2-library",
         name: "R2 Library",
-        version: 1.7,
+        version: 1.8,
         website: "https://developers.cloudflare.com/r2/",
         thumbnail: "r2-library.png",
         languages: ["en"],
@@ -6530,7 +6597,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       var runtime = require_runtime();
       var sourceModule = require_r2_library();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.7, "website": "https://developers.cloudflare.com/r2/", "thumbnail": "r2-library.png", "languages": ["en"], "rating": 2 };
+      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.8, "website": "https://developers.cloudflare.com/r2/", "thumbnail": "r2-library.png", "languages": ["en"], "rating": 2 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

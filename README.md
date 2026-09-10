@@ -2,11 +2,13 @@
 
 Archive branch with the **Suwatte** sources (frozen before this repo was stripped to R2 Library-only).
 
-Suwatte list:
+Suwatte list URL (paste this, not `runners.json`):
 
 ```
-https://raw.githubusercontent.com/raahat-hossain/extensions/cursor/suwatte-extensions-8f4a/dist/runners.json
+https://raahat-hossain.github.io/extensions/suwatte
 ```
+
+Open that in Safari → **Add To Suwatte**. In-app “add list” uses the same directory URL. A `runners.json` raw GitHub link 404s — Suwatte then requests `{url}/runners.json`.
 
 Dev catalog for **Suwatte** sources, plus a **Mihon / TachiManga** APK: **R2 Library**.
 

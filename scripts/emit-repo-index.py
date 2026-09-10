@@ -51,14 +51,14 @@ def main() -> None:
     code = int(version.split(".")[-1])
 
     index = index_pb2.Index(
-        name="R2 Merge",
+        name="R2 Library",
         badgeLabel="R2",
         signingKey=signing_key(apk),
         contact=index_pb2.Contact(website="https://github.com/raahat-hossain/extensions"),
         extensionList=index_pb2.ExtensionList(
             extensions=[
                 index_pb2.Extension(
-                    name="R2 Merge",
+                    name="R2 Library",
                     packageName=PKG,
                     resources=index_pb2.Resources(
                         apkUrl=f"{RAW_BASE}/apk/{apk.name}",
@@ -72,7 +72,7 @@ def main() -> None:
                     sources=[
                         index_pb2.Source(
                             id=SOURCE_ID,
-                            name="R2 Merge",
+                            name="R2 Library",
                             language="all",
                             homeUrl="https://developers.cloudflare.com",
                         ),
@@ -95,7 +95,7 @@ def main() -> None:
 
     legacy = [
         {
-            "name": "Tachiyomi: R2 Merge",
+            "name": "Tachiyomi: R2 Library",
             "pkg": PKG,
             "apk": apk.name,
             "lang": "all",
@@ -104,7 +104,7 @@ def main() -> None:
             "nsfw": 1,
             "sources": [
                 {
-                    "name": "R2 Merge",
+                    "name": "R2 Library",
                     "lang": "all",
                     "id": str(SOURCE_ID),
                     "baseUrl": "https://developers.cloudflare.com",

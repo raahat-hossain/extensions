@@ -33,6 +33,11 @@
       "title": "Chapter 6",
       "number": 6,
       "url": "https://hitomi.la/galleries/123456.html"
+    },
+    {
+      "title": "Chapter 7",
+      "number": 7,
+      "url": "https://cdn.example.com/ch7.cbz"
     }
   ]
 }

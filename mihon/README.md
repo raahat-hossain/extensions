@@ -1,53 +1,43 @@
-# R2 Merge — Mihon / TachiManga / Tachiyomi extension
+# R2 Library — Mihon / TachiManga / Tachiyomi extension
 
-Kotlin `HttpSource` (lib **1.4**). Not a Suwatte `.stt`.
+Kotlin `HttpSource` (lib **1.4**, `1.4.3`). Display name **R2 Library**. Package stays `eu.kanade.tachiyomi.extension.all.r2merge` so existing installs update.
 
-One library title. Chapters are gallery/reader URLs from nhentai, HentaiRead, HentaiNexus, Hentai2Read, PandaChaika, E-Hentai / ExHentai, and Hitomi.
-
-Parsers: Yūzōnō nHentai API v2 + E-Hentai / Hitomi, then Keiyoushi HentaiRead / HentaiNexus / PandaChaika.
+One R2 bucket. Chapters are **folder images**, **.cbz/.zip** (HTTP range), and/or **chapters.json** gallery/remote-archive/page-list entries.
 
 ## R2 layout
 
 ```text
 <title-id>/
-  details.json      # optional
-  cover.webp        # optional custom cover
-  chapters.json     # required
+  details.json      # optional (or ComicInfo.xml)
+  cover.webp        # optional
+  chapters.json     # optional
+  Chapter 001/      # image folder
+  Chapter 002.cbz   # archive
 ```
 
-`chapters.json`:
+`chapters.json` (merged with whatever is already in the folder):
 
 ```json
 {
   "chapters": [
     { "title": "Ch 1", "number": 1, "url": "https://nhentai.net/g/289857/" },
-    { "title": "Ch 2", "number": 2, "url": "https://hentairead.com/hentai/some-slug/" },
-    { "title": "Ch 3", "number": 3, "id": "21161", "source": "hentainexus" },
-    { "title": "Ch 4", "number": 4, "url": "https://panda.chaika.moe/archive/12345" },
-    { "title": "Ch 5", "number": 5, "url": "https://e-hentai.org/g/1503549/c16349ed0a/" },
-    { "title": "Ch 6", "number": 6, "url": "https://hitomi.la/galleries/123456.html" }
+    { "title": "Ch 2", "number": 2, "url": "https://e-hentai.org/g/1503549/c16349ed0a/" },
+    { "title": "Ch 3", "number": 3, "url": "https://cdn.example.com/ch3.cbz" },
+    { "title": "Ch 4", "number": 4, "pages": ["https://cdn.example.com/4/001.jpg"] }
   ]
 }
 ```
 
-`source` is optional when the host is obvious.
-
 ## Install
-
-Repo URL (same shape as Yūzōnō — must end in `index.pb`):
 
 ```
 https://github.com/raahat-hossain/extensions/raw/cursor/r2-merge-extension-8f4a/repo/index.pb
 ```
 
-Or sideload `repo/apk/tachiyomi-all.r2merge-v1.4.2.apk`. Then source settings: account id / access key / secret / bucket.
+Or sideload `repo/apk/tachiyomi-all.r2merge-v1.4.3.apk`. Settings: account id / access key / secret / bucket.
 
 ## Build
-
-Needs Android SDK 37 (`platforms;android-37` or a symlink from `android-37.0`).
 
 ```sh
 bash scripts/build-r2-merge-apk.sh
 ```
-
-APK lands in `repo/apk/`. Gradle host is Yūzōnō (`YUZONO_DIR`, default `.ref/yuzono`).

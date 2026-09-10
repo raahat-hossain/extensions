@@ -1,17 +1,21 @@
-# R2 bucket layout for the R2 Merge Mihon / TachiManga extension
+# R2 bucket layout for R2 Library (Mihon / TachiManga)
 
-One folder = one library title. Chapters are **remote gallery/reader URLs** (nhentai, HentaiRead, HentaiNexus, Hentai2Read, PandaChaika, E-Hentai, Hitomi), not zip files.
+One folder = one library title. Mix any of: image folders, `.cbz`/`.zip`, and `chapters.json` (gallery URLs, remote archives, or page lists).
 
 ```text
 Manga/                          # folder name = content id
-  details.json                  # optional metadata (same shape as R2 Library)
-  cover.webp                    # custom cover
-  chapters.json                 # required
+  details.json                  # optional
+  cover.webp                    # optional
+  chapters.json                 # optional
+  Chapter 001/                  # folder of images
+    001.jpg
+    002.jpg
+  Chapter 002.cbz               # ranged zip — not downloaded whole
 ```
 
 ## chapters.json
 
-Array, or `{ "chapters": [ ... ] }`. Each entry is a URL string or an object:
+Array, or `{ "chapters": [ ... ] }`. Each entry is a URL string or an object. Merged with zip/folder chapters already in the series.
 
 ```json
 {
@@ -20,30 +24,17 @@ Array, or `{ "chapters": [ ... ] }`. Each entry is a URL string or an object:
     {
       "title": "Chapter 2",
       "number": 2,
-      "url": "https://hentairead.com/hentai/some-slug/",
-      "source": "hentairead"
+      "url": "https://hitomi.la/galleries/123456.html"
     },
     {
       "title": "Chapter 3",
       "number": 3,
-      "id": "21161",
-      "source": "hentainexus"
+      "url": "https://cdn.example.com/ch3.cbz"
     },
     {
       "title": "Chapter 4",
       "number": 4,
-      "url": "https://panda.chaika.moe/archive/12345",
-      "source": "pandachaika"
-    },
-    {
-      "title": "Chapter 5",
-      "number": 5,
-      "url": "https://e-hentai.org/g/1503549/c16349ed0a/"
-    },
-    {
-      "title": "Chapter 6",
-      "number": 6,
-      "url": "https://hitomi.la/galleries/123456.html"
+      "pages": ["https://cdn.example.com/4/001.jpg", "https://cdn.example.com/4/002.jpg"]
     }
   ]
 }
@@ -51,15 +42,13 @@ Array, or `{ "chapters": [ ... ] }`. Each entry is a URL string or an object:
 
 | Field | Notes |
 | --- | --- |
-| `url` / `href` / `link` | Gallery or reader page. Host is enough to pick a parser. |
-| `source` / `site` / `host` | Optional override: `nhentai`, `hentairead`, `hentainexus`, `hentai2read`, `pandachaika`, `ehentai`, `hitomi` (aliases: `nh`, `hr`, `hn`, `h2r`, `chaika`, `eh`, `exhentai`) |
+| `url` / `href` / `link` / `archive` / `file` | Gallery page, remote `.cbz`/`.zip`, or a path relative to the series folder |
+| `source` / `site` / `host` | Optional: `nhentai`, `hentairead`, `hentainexus`, `hentai2read`, `pandachaika`, `ehentai`, `hitomi` (aliases: `nh`, `hr`, `hn`, `h2r`, `chaika`, `eh`, `exhentai`). `zip`/`cbz` forces archive handling |
 | `id` | Gallery/slug id if you skip the URL (`id` + `source`) |
-| `title` / `number` / `volume` / `date` / `language` / `scanlator` | Optional display fields |
-| `pages` | Optional raw image URLs — skips site parsing for that chapter |
+| `title` / `number` / `date` / `scanlator` | Optional display fields |
+| `pages` | Raw image URLs — skips site/archive parsing |
 
-Paste the **gallery/chapter page** URL, not an individual image.
-
-Supported hosts (Yūzōnō nhentai API v2 / E-Hentai / Hitomi, then Keiyoushi HentaiRead / HentaiNexus / PandaChaika):
+### Gallery hosts
 
 - `https://nhentai.net/g/<id>/`
 - `https://hentairead.com/hentai/<slug>/`
@@ -69,4 +58,12 @@ Supported hosts (Yūzōnō nhentai API v2 / E-Hentai / Hitomi, then Keiyoushi He
 - `https://e-hentai.org/g/<id>/<token>/` (also `exhentai.org`)
 - `https://hitomi.la/galleries/<id>.html`
 
-`details.json` uses the same fields as R2 Library. Default rating is **mature** when omitted.
+### Archives and folders
+
+- Chapter folders of jpg/png/webp/… (nested `Volume 1/Chapter 003` is fine)
+- `.cbz` / `.zip` in the series folder (range requests)
+- Remote `url` ending in `.cbz`/`.zip` (host must support `Range`)
+- Images dumped in the series folder with no chapter dirs → one chapter
+- `.cbr` / `.rar` / `.pdf` are not readable — convert to `.cbz`
+
+`details.json` uses Tachiyomi local-source fields (`title`, `author`, `artist`, `description`, `genre`, `status`, `cover`). `ComicInfo.xml` in the series folder works as a fallback. Default rating is **mature** when omitted.

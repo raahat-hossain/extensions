@@ -3,15 +3,35 @@ package eu.kanade.tachiyomi.extension.all.r2merge
 import android.text.InputType
 import android.util.Base64
 import androidx.preference.EditTextPreference
+import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
+import androidx.preference.SwitchPreferenceCompat
+import eu.kanade.tachiyomi.extension.all.r2merge.meta.SeriesMetadata
+import eu.kanade.tachiyomi.extension.all.r2merge.net.ArchiveCache
+import eu.kanade.tachiyomi.extension.all.r2merge.net.ArchiveInterceptor
+import eu.kanade.tachiyomi.extension.all.r2merge.net.R2Config
+import eu.kanade.tachiyomi.extension.all.r2merge.net.S3Client
+import eu.kanade.tachiyomi.extension.all.r2merge.net.S3Listing
+import eu.kanade.tachiyomi.extension.all.r2merge.net.S3Object
+import eu.kanade.tachiyomi.extension.all.r2merge.net.SigV4Interceptor
+import eu.kanade.tachiyomi.extension.all.r2merge.net.isAbsoluteUrl
+import eu.kanade.tachiyomi.extension.all.r2merge.util.NaturalOrder
+import eu.kanade.tachiyomi.extension.all.r2merge.util.chapterNumberOf
+import eu.kanade.tachiyomi.extension.all.r2merge.util.fileName
+import eu.kanade.tachiyomi.extension.all.r2merge.util.isArchiveKey
+import eu.kanade.tachiyomi.extension.all.r2merge.util.isHiddenKey
+import eu.kanade.tachiyomi.extension.all.r2merge.util.isImageKey
+import eu.kanade.tachiyomi.extension.all.r2merge.util.isUnsupportedArchiveKey
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.ConfigurableSource
+import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import eu.kanade.tachiyomi.source.online.HttpSource
 import keiyoushi.annotation.Source
 import keiyoushi.utils.getPreferencesLazy
@@ -25,13 +45,18 @@ import kotlinx.serialization.json.Json
 import okhttp3.Headers
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.asResponseBody
 import okio.buffer
 import rx.Observable
+import java.io.IOException
 import java.lang.String.CASE_INSENSITIVE_ORDER
+import java.util.concurrent.Callable
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 
 @Source
 class R2Merge(
@@ -42,7 +67,7 @@ class R2Merge(
 ) : HttpSource(),
     ConfigurableSource {
 
-    override val supportsLatest = false
+    override val supportsLatest = true
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -50,218 +75,379 @@ class R2Merge(
     }
     private val preferences by getPreferencesLazy()
     private val hitomiGg = HitomiGg()
-
     private var cachedNhServer: String? = null
 
-    override val client = network.client.newBuilder()
-        .addInterceptor(::chaikaZipInterceptor)
-        .addInterceptor(::ehentaiBackupInterceptor)
-        .addInterceptor(::ehentaiCookieInterceptor)
-        .addNetworkInterceptor(::ehentaiCookieInterceptor)
-        .build()
-
-    private fun config(): R2Config {
+    private fun config(): R2Config? {
         val accountId = preferences.getString(PREF_ACCOUNT, "")!!.trim()
+        val endpointRaw = preferences.getString(PREF_ENDPOINT, "")!!.trim().ifBlank { accountId }
+        val endpoint = R2Config.parseEndpoint(endpointRaw) ?: return null
         val accessKeyId = preferences.getString(PREF_ACCESS_KEY, "")!!.trim()
         val secret = preferences.getString(PREF_SECRET, "")!!.trim()
         val bucket = preferences.getString(PREF_BUCKET, "")!!.trim()
-        val endpointOverride = preferences.getString(PREF_ENDPOINT, "")!!.trim().trimEnd('/')
-        val prefix = preferences.getString(PREF_PREFIX, "")!!.trim().trim('/')
-        if (accountId.isEmpty() || accessKeyId.isEmpty() || secret.isEmpty() || bucket.isEmpty()) {
-            throw Exception("Open R2 Merge settings and set Account ID, Access Key, Secret, and Bucket")
-        }
+        if (accessKeyId.isEmpty() || secret.isEmpty() || bucket.isEmpty()) return null
         return R2Config(
-            accountId = accountId,
+            endpoint = endpoint,
+            bucket = bucket,
             accessKeyId = accessKeyId,
             secretAccessKey = secret,
-            bucket = bucket,
-            endpoint = endpointOverride.ifBlank { "https://$accountId.r2.cloudflarestorage.com" },
-            prefix = prefix,
+            region = preferences.getString(PREF_REGION, DEFAULT_REGION)!!.ifBlank { DEFAULT_REGION },
+            rootPrefix = R2Config.normalizePrefix(preferences.getString(PREF_PREFIX, "")!!),
+            publicBaseUrl = R2Config.parsePublicBase(preferences.getString(PREF_PUBLIC_BASE, "")!!),
         )
     }
 
-    override fun headersBuilder(): Headers.Builder = super.headersBuilder()
-        .set("Accept", "application/json, text/html, */*;q=0.8")
+    private fun requireConfig(): R2Config = config() ?: throw IOException(SETUP_MESSAGE)
 
-    private fun r2Get(config: R2Config, key: String? = null, query: Map<String, String> = emptyMap()): Request {
-        val url = presignGet(config, key, query, expiresSeconds = 900)
-        return GET(url, headers)
+    private val signer = SigV4Interceptor(::config)
+
+    private val signedClient: OkHttpClient by lazy {
+        network.client.newBuilder().addInterceptor(signer).build()
     }
 
-    private fun listAllKeys(config: R2Config, prefix: String): List<String> {
-        val keys = mutableListOf<String>()
-        var token: String? = null
-        do {
-            val query = linkedMapOf(
-                "list-type" to "2",
-                "max-keys" to "1000",
-                "prefix" to prefix,
-            )
-            if (token != null) query["continuation-token"] = token
-            val page = client.newCall(r2Get(config, query = query)).execute().use { response ->
-                if (!response.isSuccessful && response.code !in 200..299) {
-                    throw Exception("R2 list failed (${response.code})")
-                }
-                parseObjectKeys(response.body.string())
+    private val archives: ArchiveCache by lazy { ArchiveCache(signedClient, ::config) }
+
+    override val client: OkHttpClient by lazy {
+        network.client.newBuilder()
+            .addInterceptor(::chaikaZipInterceptor)
+            .addInterceptor(ArchiveInterceptor(archives))
+            .addInterceptor(::ehentaiBackupInterceptor)
+            .addInterceptor(::ehentaiCookieInterceptor)
+            .addNetworkInterceptor(::ehentaiCookieInterceptor)
+            .addInterceptor(signer)
+            .build()
+    }
+
+    private val s3: S3Client by lazy { S3Client(signedClient) }
+
+    private val coverPool by lazy {
+        Executors.newFixedThreadPool(COVER_THREADS) { runnable ->
+            Thread(runnable, "r2library-cover").apply { isDaemon = true }
+        }
+    }
+
+    private class Cached<T>(val value: T, val storedAt: Long)
+
+    @Volatile
+    private var seriesCache: Cached<List<Series>>? = null
+
+    @Volatile
+    private var recentCache: Cached<List<Series>>? = null
+
+    private val shallowCache = ListingCache(64)
+    private val treeCache = ListingCache(8)
+    private val coverCache = ConcurrentHashMap<String, String>()
+    private val titleCache = ConcurrentHashMap<String, String>()
+
+    private fun invalidateCaches() {
+        seriesCache = null
+        recentCache = null
+        shallowCache.clear()
+        treeCache.clear()
+        coverCache.clear()
+        titleCache.clear()
+        archives.clear()
+    }
+
+    private fun <T> Cached<T>?.freshValue(): T? {
+        val cached = this ?: return null
+        val ttl = cacheTtlMs
+        if (ttl > 0 && System.currentTimeMillis() - cached.storedAt > ttl) return null
+        return cached.value
+    }
+
+    private val cacheTtlMs: Long
+        get() = preferences.getString(PREF_CACHE_TTL, null)?.toLongOrNull()?.times(1000L)
+            ?: DEFAULT_CACHE_TTL_SECONDS * 1000L
+
+    private data class Series(val name: String, val prefix: String)
+
+    override fun fetchPopularManga(page: Int): Observable<MangasPage> = Observable.fromCallable { browse(page, "", FilterList()) }
+
+    override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> = Observable.fromCallable { browse(page, query, filters) }
+
+    override fun fetchLatestUpdates(page: Int): Observable<MangasPage> = Observable.fromCallable { paginate(recentSeries(requireConfig()), page) }
+
+    private fun browse(page: Int, query: String, filters: FilterList): MangasPage {
+        val config = requireConfig()
+        var series = allSeries(config)
+        if (query.isNotBlank()) {
+            val needle = query.trim()
+            series = series.filter {
+                it.name.contains(needle, ignoreCase = true) ||
+                    (titleCache[it.prefix] ?: it.name).contains(needle, ignoreCase = true)
             }
-            keys += page.keys
-            token = page.nextToken
-        } while (token != null)
-        return keys
-    }
-
-    private fun listTitles(config: R2Config): List<TitleEntry> {
-        val prefix = rootPrefix(config.prefix)
-        var entries = titlesFromKeys(listAllKeys(config, prefix), config.prefix)
-        if (entries.isEmpty() && prefix.isNotEmpty()) {
-            entries = titlesFromKeys(listAllKeys(config, ""), "")
         }
-        return entries
+        val ascending = filters.filterIsInstance<SortFilter>()
+            .firstOrNull()?.state?.ascending ?: true
+        if (!ascending) series = series.asReversed()
+        return paginate(series, page)
     }
 
-    private fun mangaStatus(raw: String?): Int = when (raw?.lowercase()) {
-        "ongoing", "1" -> SManga.ONGOING
-        "completed", "2" -> SManga.COMPLETED
-        "licensed", "3" -> SManga.LICENSED
-        "publishing_finished", "publishing-finished", "4" -> SManga.PUBLISHING_FINISHED
-        "cancelled", "canceled", "5" -> SManga.CANCELLED
-        "hiatus", "on_hiatus", "on-hiatus", "6" -> SManga.ON_HIATUS
-        else -> SManga.UNKNOWN
+    private fun paginate(series: List<Series>, page: Int): MangasPage {
+        val from = (page - 1) * PAGE_SIZE
+        val slice = series.drop(from).take(PAGE_SIZE)
+        return MangasPage(withCovers(requireConfig(), slice), series.size > from + slice.size)
     }
 
-    private fun toSManga(config: R2Config, entry: TitleEntry, details: DetailsFile? = null): SManga = SManga.create().apply {
-        url = entry.id
-        title = details?.title ?: entry.id
-        thumbnail_url = when {
-            entry.coverKey != null -> presignGet(config, entry.coverKey, expiresSeconds = 3600)
-            details?.cover?.startsWith("http") == true -> details.cover
-            else -> null
+    private fun allSeries(config: R2Config): List<Series> {
+        seriesCache.freshValue()?.let { return it }
+        var listing = s3.listAll(config, config.rootPrefix, DELIMITER)
+        var root = config.rootPrefix
+        if (listing.prefixes.isEmpty() && root.isNotEmpty()) {
+            listing = s3.listAll(config, "", DELIMITER)
+            root = ""
         }
-        author = details?.author
-        artist = details?.artist
-        description = details?.summary
-        genre = details?.genre
-        status = mangaStatus(details?.status)
-        initialized = details != null
+        val series = listing.prefixes
+            .map { Series(name = it.removePrefix(root).trimEnd('/'), prefix = it) }
+            .filter { it.name.isNotEmpty() && !it.name.startsWith(".") && !it.name.equals("upload", true) }
+            .sortedWith(compareBy(NaturalOrder) { it.name })
+        if (series.isEmpty()) throw IOException(emptyLibraryMessage(config, listing))
+        seriesCache = Cached(series, System.currentTimeMillis())
+        return series
     }
 
-    private fun loadLibrary(query: String = ""): MangasPage {
-        val config = config()
-        val needle = query.trim().lowercase()
-        val mangas = listTitles(config).map { toSManga(config, it) }.filter {
-            needle.isEmpty() ||
-                it.title.lowercase().contains(needle) ||
-                it.url.lowercase().contains(needle)
+    private fun recentSeries(config: R2Config): List<Series> {
+        recentCache.freshValue()?.let { return it }
+        val maxPages = preferences.getString(PREF_LATEST_PAGES, null)?.toIntOrNull()
+            ?.coerceIn(1, 100) ?: DEFAULT_LATEST_PAGES
+        val listing = s3.listAll(config, config.rootPrefix, delimiter = null, maxPages = maxPages)
+        val newest = HashMap<String, Long>()
+        for (obj in listing.objects) {
+            if (isHiddenKey(obj.key)) continue
+            val name = obj.key.removePrefix(config.rootPrefix).substringBefore('/', "")
+            if (name.isEmpty() || name.equals("upload", true)) continue
+            val current = newest[name]
+            if (current == null || obj.lastModified > current) newest[name] = obj.lastModified
         }
-        return MangasPage(mangas, false)
+        val series = newest.entries
+            .sortedByDescending { it.value }
+            .map { Series(it.key, "${config.rootPrefix}${it.key}/") }
+        if (series.isEmpty()) throw IOException(emptyLibraryMessage(config, listing))
+        recentCache = Cached(series, System.currentTimeMillis())
+        return series
     }
 
-    override fun fetchPopularManga(page: Int): Observable<MangasPage> {
-        if (page > 1) return Observable.just(MangasPage(emptyList(), false))
-        return Observable.fromCallable { loadLibrary() }
+    private data class SeriesCard(val title: String, val coverUrl: String?)
+
+    private fun withCovers(config: R2Config, series: List<Series>): List<SManga> {
+        if (series.isEmpty()) return emptyList()
+        val pending = series.map { entry ->
+            coverPool.submit(
+                Callable {
+                    runCatching {
+                        val listing = shallowListing(config, entry.prefix)
+                        val metadata = readMetadata(config, listing)
+                        val title = titleCache[entry.prefix] ?: (metadata?.title?.trim()?.takeIf { it.isNotEmpty() } ?: entry.name)
+                            .also { titleCache[entry.prefix] = it }
+                        SeriesCard(title, coverUrl(config, entry.prefix, listing, metadata))
+                    }.getOrNull()
+                },
+            )
+        }
+        return series.mapIndexed { index, entry ->
+            val card = runCatching { pending[index].get() }.getOrNull()
+            SManga.create().apply {
+                url = entry.name
+                title = card?.title ?: entry.name
+                thumbnail_url = card?.coverUrl
+                update_strategy = UpdateStrategy.ALWAYS_UPDATE
+            }
+        }
     }
 
-    override fun popularMangaRequest(page: Int): Request {
-        val config = config()
-        return r2Get(
-            config,
-            query = mapOf(
-                "list-type" to "2",
-                "max-keys" to "1000",
-                "prefix" to rootPrefix(config.prefix),
-            ),
-        )
-    }
-
-    override fun popularMangaParse(response: Response): MangasPage {
-        val config = config()
-        val page = parseObjectKeys(response.use { it.body.string() })
-        val mangas = titlesFromKeys(page.keys, config.prefix).map { toSManga(config, it) }
-        return MangasPage(mangas, page.nextToken != null)
-    }
-
-    override fun latestUpdatesRequest(page: Int) = throw UnsupportedOperationException()
-    override fun latestUpdatesParse(response: Response) = throw UnsupportedOperationException()
-
-    override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> {
-        if (page > 1) return Observable.just(MangasPage(emptyList(), false))
-        return Observable.fromCallable { loadLibrary(query) }
-    }
-
-    override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request = popularMangaRequest(page)
-
-    override fun searchMangaParse(response: Response): MangasPage = popularMangaParse(response)
-
-    override fun mangaDetailsRequest(manga: SManga): Request {
-        val config = config()
-        return r2Get(config, key = "${rootPrefix(config.prefix)}${manga.url}/details.json")
+    private fun seriesPrefix(config: R2Config, mangaUrl: String): String {
+        val id = mangaUrl.trim('/')
+        return if (id.contains('/')) {
+            if (id.endsWith("/")) id else "$id/"
+        } else {
+            "${config.rootPrefix}$id/"
+        }
     }
 
     override fun fetchMangaDetails(manga: SManga): Observable<SManga> = Observable.fromCallable {
-        val config = config()
-        val prefix = rootPrefix(config.prefix)
-        val folderPrefix = "$prefix${manga.url}/"
-        val folderKeys = listAllKeys(config, folderPrefix)
-        val entry = titlesFromKeys(folderKeys, config.prefix).firstOrNull { it.id == manga.url }
-
-        val details = if (entry?.detailsKey != null) {
-            client.newCall(r2Get(config, key = entry.detailsKey)).execute().use { response ->
-                if (response.isSuccessful) parseDetailsJson(response.body.string(), json) else null
-            }
-        } else {
-            client.newCall(r2Get(config, key = "${folderPrefix}details.json")).execute().use { response ->
-                if (response.isSuccessful) parseDetailsJson(response.body.string(), json) else null
-            }
-        }
-
-        manga.apply {
-            title = details?.title ?: title.ifBlank { url }
-            description = details?.summary ?: description
-            author = details?.author ?: author
-            artist = details?.artist ?: artist
-            genre = details?.genre ?: genre
-            status = details?.status?.let { mangaStatus(it) } ?: status
-            thumbnail_url = when {
-                entry?.coverKey != null -> presignGet(config, entry.coverKey, expiresSeconds = 3600)
-                details?.cover?.startsWith("http") == true -> details.cover
-                else -> thumbnail_url
-            }
+        val config = requireConfig()
+        val prefix = seriesPrefix(config, manga.url)
+        val listing = shallowListing(config, prefix)
+        val metadata = readMetadata(config, listing)
+        SManga.create().apply {
+            url = manga.url
+            title = metadata?.title?.trim()?.takeIf { it.isNotEmpty() } ?: prefix.fileName()
+            author = metadata?.author
+            artist = metadata?.artist
+            description = metadata?.description
+            genre = metadata?.genre
+            status = metadata?.status ?: SManga.UNKNOWN
+            thumbnail_url = runCatching { coverUrl(config, prefix, listing, metadata) }.getOrNull()
+            update_strategy = UpdateStrategy.ALWAYS_UPDATE
             initialized = true
         }
     }
 
-    override fun mangaDetailsParse(response: Response): SManga {
-        val details = parseDetailsJson(response.use { it.body.string() }, json)
-        return SManga.create().apply {
-            title = details.title ?: "Untitled"
-            description = details.summary
-            author = details.author
-            artist = details.artist
-            genre = details.genre
-            status = mangaStatus(details.status)
-            if (details.cover?.startsWith("http") == true) {
-                thumbnail_url = details.cover
-            }
-            initialized = true
-        }
-    }
-
-    override fun chapterListRequest(manga: SManga): Request {
-        val config = config()
-        return r2Get(config, key = "${rootPrefix(config.prefix)}${manga.url}/chapters.json")
-    }
-
-    override fun chapterListParse(response: Response): List<SChapter> {
-        val chapters = parseChaptersJson(response.use { it.body.string() }, json)
-        return chapters.map { chapter ->
-            SChapter.create().apply {
-                url = chapter.url
-                name = chapter.title
-                chapter_number = chapter.number
-                scanlator = chapter.scanlator
-                date_upload = chapter.dateUpload
+    private fun readMetadata(config: R2Config, listing: S3Listing): SeriesMetadata? {
+        val byName = listing.objects.associateBy { it.key.fileName().lowercase() }
+        byName[SeriesMetadata.DETAILS_JSON]?.let { obj ->
+            fetchText(config, obj)?.let { text ->
+                SeriesMetadata.fromDetailsJson(text)?.let { return it }
             }
         }
+        byName[SeriesMetadata.COMIC_INFO_XML]?.let { obj ->
+            fetchText(config, obj)?.let { text ->
+                SeriesMetadata.fromComicInfo(text)?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private fun fetchText(config: R2Config, obj: S3Object): String? {
+        if (obj.size > MAX_METADATA_BYTES) return null
+        return runCatching {
+            signedClient.newCall(GET(config.objectUrl(obj.key), headers)).execute().use { response ->
+                if (response.isSuccessful) response.body.string() else null
+            }
+        }.getOrNull()
+    }
+
+    private fun coverUrl(
+        config: R2Config,
+        seriesPrefix: String,
+        listing: S3Listing,
+        metadata: SeriesMetadata? = null,
+    ): String? {
+        coverCache[seriesPrefix]?.let { return it }
+        metadata?.cover?.takeIf { isAbsoluteHttpUrl(it) }?.let {
+            coverCache[seriesPrefix] = it
+            return it
+        }
+        val directImages = listing.objects.filter { isImageKey(it.key) && it.key.isChildOf(seriesPrefix) }
+        val url = directImages.firstOrNull { it.key.isCoverFile() }?.let { config.imageUrl(it.key).toString() }
+            ?: directImages.minWithOrNull(compareBy(NaturalOrder) { it.key })
+                ?.let { config.imageUrl(it.key).toString() }
+            ?: firstPageUrl(config, listing)
+        if (url != null) coverCache[seriesPrefix] = url
+        return url
+    }
+
+    private fun firstPageUrl(config: R2Config, listing: S3Listing): String? {
+        listing.prefixes.minWithOrNull(NaturalOrder)?.let { firstFolder ->
+            val page = s3.listAll(config, firstFolder, delimiter = null, maxPages = 1)
+                .objects
+                .filter { isImageKey(it.key) }
+                .minWithOrNull(compareBy(NaturalOrder) { it.key })
+            if (page != null) return config.imageUrl(page.key).toString()
+        }
+        val archive = listing.objects
+            .filter { isArchiveKey(it.key) }
+            .minWithOrNull(compareBy(NaturalOrder) { it.key })
+            ?: return null
+        val entry = archives.zipFor(archive.key).entries()
+            .filter { isImageKey(it.name) }
+            .minWithOrNull(compareBy(NaturalOrder) { it.name })
+            ?: return null
+        return ArchiveInterceptor.pageUrl(archive.key, entry.name)
+    }
+
+    override fun fetchChapterList(manga: SManga): Observable<List<SChapter>> = Observable.fromCallable {
+        val config = requireConfig()
+        val prefix = seriesPrefix(config, manga.url)
+        val tree = treeListing(config, prefix)
+        val seriesName = prefix.fileName()
+        val folderDates = LinkedHashMap<String, Long>()
+        val archiveObjects = mutableListOf<S3Object>()
+        val looseImages = mutableListOf<S3Object>()
+        var unsupported = 0
+        var chaptersJson: S3Object? = null
+
+        for (obj in tree.objects) {
+            if (isHiddenKey(obj.key)) continue
+            val name = obj.key.fileName()
+            when {
+                name.equals("chapters.json", true) ||
+                    name.equals("chapter-list.json", true) ||
+                    name.equals("chapter_list.json", true) -> chaptersJson = obj
+                isArchiveKey(obj.key) -> archiveObjects += obj
+                isUnsupportedArchiveKey(obj.key) -> unsupported++
+                !isImageKey(obj.key) -> Unit
+                obj.key.isChildOf(prefix) -> looseImages += obj
+                else -> {
+                    val folder = "${obj.key.substringBeforeLast('/')}/"
+                    val previous = folderDates[folder]
+                    if (previous == null || obj.lastModified > previous) {
+                        folderDates[folder] = obj.lastModified
+                    }
+                }
+            }
+        }
+
+        val chapters = mutableListOf<ParsedChapter>()
+        folderDates.forEach { (folder, date) ->
+            val label = folder.removePrefix(prefix).trimEnd('/').replace("/", " – ")
+            chapters += ParsedChapter(
+                title = label,
+                number = chapterNumberOf(label, seriesName).takeIf { it >= 0f } ?: 0f,
+                url = folder,
+                dateUpload = date,
+            )
+        }
+        archiveObjects.forEach { obj ->
+            val label = obj.key.removePrefix(prefix).substringBeforeLast('.').replace("/", " – ")
+            chapters += ParsedChapter(
+                title = label,
+                number = chapterNumberOf(label, seriesName).takeIf { it >= 0f } ?: 0f,
+                url = obj.key,
+                dateUpload = obj.lastModified,
+            )
+        }
+        val flatPages = pagesOf(looseImages).filterNot { it.key.isCoverFile() }
+        if (chapters.isEmpty() && flatPages.isNotEmpty()) {
+            chapters += ParsedChapter(
+                title = seriesName,
+                number = 1f,
+                url = prefix,
+                dateUpload = flatPages.maxOfOrNull { it.lastModified } ?: 0L,
+            )
+        }
+
+        if (chaptersJson != null) {
+            fetchText(config, chaptersJson)?.let { text ->
+                chapters += parseChaptersJson(text, json, prefix)
+            }
+        }
+
+        if (chapters.isEmpty()) {
+            throw IOException(emptySeriesMessage(seriesName, unsupported, chaptersJson != null))
+        }
+
+        chapters
+            .distinctBy { it.url }
+            .sortedWith(compareBy<ParsedChapter> { it.number }.thenBy(NaturalOrder) { it.title })
+            .map { chapter ->
+                SChapter.create().apply {
+                    url = chapter.url
+                    name = chapter.title
+                    date_upload = chapter.dateUpload
+                    scanlator = chapter.scanlator
+                    chapter_number = chapter.number.takeIf { it > 0f }
+                        ?: chapterNumberOf(chapter.title, seriesName).takeIf { it >= 0f }
+                        ?: 1f
+                }
+            }
+            .asReversed()
+    }
+
+    override fun fetchPageList(chapter: SChapter): Observable<List<Page>> {
+        val url = chapter.url
+        if (url.startsWith("pages:")) {
+            val raw = String(
+                Base64.decode(url.removePrefix("pages:"), Base64.URL_SAFE),
+                Charsets.UTF_8,
+            )
+            val urls = json.decodeFromString(ListSerializer(String.serializer()), raw)
+            return Observable.just(urls.mapIndexed { index, pageUrl -> Page(index, imageUrl = pageUrl) })
+        }
+        if (tryIdentifySite(url) != null) {
+            return client.newCall(pageListRequest(chapter)).asObservableSuccess().map { pageListParse(it) }
+        }
+        return Observable.fromCallable { localOrArchivePages(url) }
     }
 
     override fun pageListRequest(chapter: SChapter): Request {
@@ -273,22 +459,8 @@ class R2Merge(
         val remoteId = extractRemoteId(site, url)
         val target = pageListUrl(site, remoteId, url)
         val builder = headers.newBuilder().set("Referer", siteReferer(site))
-        if (site == SiteId.Hitomi) {
-            builder.set("Origin", HITOMI_BASE)
-        }
+        if (site == SiteId.Hitomi) builder.set("Origin", HITOMI_BASE)
         return GET(target, builder.build())
-    }
-
-    override fun fetchPageList(chapter: SChapter): Observable<List<Page>> {
-        if (chapter.url.startsWith("pages:")) {
-            val raw = String(
-                Base64.decode(chapter.url.removePrefix("pages:"), Base64.URL_SAFE),
-                Charsets.UTF_8,
-            )
-            val urls = json.decodeFromString(ListSerializer(String.serializer()), raw)
-            return Observable.just(urls.mapIndexed { index, pageUrl -> Page(index, imageUrl = pageUrl) })
-        }
-        return client.newCall(pageListRequest(chapter)).asObservableSuccess().map { pageListParse(it) }
     }
 
     override fun pageListParse(response: Response): List<Page> {
@@ -299,9 +471,8 @@ class R2Merge(
             host.contains("nhentai.net") && requestUrl.contains("/api/v2/galleries/") -> {
                 val server = cachedNhServer ?: run {
                     val cfg = runCatching {
-                        client.newCall(
-                            GET("https://nhentai.net/api/v2/config", headers),
-                        ).execute().use { it.body.string() }
+                        client.newCall(GET("https://nhentai.net/api/v2/config", headers)).execute()
+                            .use { it.body.string() }
                     }.getOrNull()
                     (cfg?.let { pickNhServer(it, json) } ?: pickNhServer("{}", json)).also {
                         cachedNhServer = it
@@ -312,13 +483,51 @@ class R2Merge(
             host.contains("hentairead.com") -> parseHentaiReadPages(body, requestUrl, json)
             host.contains("hentainexus.com") -> parseHentaiNexusPages(body, json)
             host.contains("hentai2read.com") -> parseHentai2ReadPages(body)
-            host.contains("panda.chaika.moe") || host.contains("chaika.moe") ->
-                parseChaikaPages(body)
+            host.contains("panda.chaika.moe") || host.contains("chaika.moe") -> parseChaikaPages(body)
             isEHentaiHost(host) -> parseEhentaiPages(body, requestUrl)
             host.contains(HITOMI_CDN) || host.contains("hitomi.la") -> parseHitomiPages(body)
             else -> throw Exception("Don't know how to parse pages from $host")
         }
     }
+
+    private fun localOrArchivePages(target: String): List<Page> {
+        val config = requireConfig()
+        val pages = when {
+            isAbsoluteUrl(target) || isBucketArchive(target) -> archivePages(target)
+            isFolderChapter(target) || target.endsWith("/") -> {
+                val images = s3.listAll(config, target, delimiter = null)
+                    .objects
+                    .filter { isImageKey(it.key) && it.key.isChildOf(target) }
+                pagesOf(images).mapIndexed { index, obj ->
+                    Page(index, imageUrl = config.imageUrl(obj.key).toString())
+                }
+            }
+            else -> archivePages(target)
+        }
+        if (pages.isEmpty()) throw IOException("No images found in \"${target.fileName()}\".")
+        return pages
+    }
+
+    private fun archivePages(target: String): List<Page> = archives.zipFor(target).entries()
+        .filter { isImageKey(it.name) && !isHiddenKey(it.name) }
+        .sortedWith(compareBy(NaturalOrder) { it.name })
+        .mapIndexed { index, entry ->
+            Page(index, imageUrl = ArchiveInterceptor.pageUrl(target, entry.name))
+        }
+
+    private fun pagesOf(images: List<S3Object>): List<S3Object> {
+        val sorted = images.sortedWith(compareBy(NaturalOrder) { it.key })
+        if (sorted.size <= 1) return sorted
+        return sorted.filterNot { it.key.isCoverFile() }
+    }
+
+    private fun shallowListing(config: R2Config, seriesPrefix: String): S3Listing = shallowCache.get(seriesPrefix) { s3.listAll(config, seriesPrefix, DELIMITER) }
+
+    private fun treeListing(config: R2Config, seriesPrefix: String): S3Listing = treeCache.get(seriesPrefix) { s3.listAll(config, seriesPrefix, delimiter = null) }
+
+    private fun String.isChildOf(prefix: String): Boolean = startsWith(prefix) && !removePrefix(prefix).contains('/')
+
+    private fun String.isCoverFile(): Boolean = fileName().substringBeforeLast('.').equals("cover", ignoreCase = true)
 
     override fun imageUrlParse(response: Response): String {
         val requestUrl = response.request.url.toString()
@@ -459,9 +668,23 @@ class R2Merge(
             .build()
     }
 
+    private class SortFilter : Filter.Sort("Sort", arrayOf("Title"), Filter.Sort.Selection(0, ascending = true))
+
+    override fun getFilterList() = FilterList(
+        Filter.Header("Search matches folder names in your bucket."),
+        SortFilter(),
+    )
+
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        fun field(key: String, title: String, summary: String, default: String = "", secret: Boolean = false) {
-            EditTextPreference(screen.context).apply {
+        val context = screen.context
+        fun field(
+            key: String,
+            title: String,
+            summary: String,
+            default: String = "",
+            secret: Boolean = false,
+        ) {
+            EditTextPreference(context).apply {
                 this.key = key
                 this.title = title
                 this.summary = summary
@@ -470,6 +693,10 @@ class R2Merge(
                     setOnBindEditTextListener { edit ->
                         edit.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
                     }
+                }
+                setOnPreferenceChangeListener { _, _ ->
+                    invalidateCaches()
+                    true
                 }
             }.also(screen::addPreference)
         }
@@ -480,14 +707,122 @@ class R2Merge(
         field(PREF_BUCKET, "Bucket", "R2 bucket name", default = "manga")
         field(PREF_ENDPOINT, "S3 Endpoint (optional)", "Blank = https://<accountId>.r2.cloudflarestorage.com")
         field(PREF_PREFIX, "Root Prefix", "Empty if title folders sit at bucket root")
+        field(
+            PREF_PUBLIC_BASE,
+            "Public image URL (optional)",
+            "r2.dev or custom domain. Images load unsigned when set.",
+        )
+        field(PREF_REGION, "Region", "Leave as auto", default = DEFAULT_REGION)
+
+        val ttlLabels = arrayOf("1 minute", "5 minutes", "15 minutes", "1 hour", "Never cache")
+        val ttlValues = arrayOf("60", "300", "900", "3600", "0")
+        val ttlDefault = DEFAULT_CACHE_TTL_SECONDS.toString()
+        screen.addPreference(
+            ListPreference(context).apply {
+                key = PREF_CACHE_TTL
+                title = "Re-read the bucket every"
+                entries = arrayOf<CharSequence>(*ttlLabels)
+                entryValues = arrayOf<CharSequence>(*ttlValues)
+                setDefaultValue(ttlDefault)
+                setOnPreferenceChangeListener { _, _ ->
+                    invalidateCaches()
+                    true
+                }
+            },
+        )
+        field(
+            PREF_LATEST_PAGES,
+            "Latest updates scan limit",
+            "How many 1000-object pages to scan for Latest.",
+            default = DEFAULT_LATEST_PAGES.toString(),
+        )
+        screen.addPreference(
+            SwitchPreferenceCompat(context).apply {
+                key = PREF_CLEAR_CACHE
+                title = "Clear cached listings"
+                summary = "Flip to re-read the bucket immediately"
+                setDefaultValue(false)
+                setOnPreferenceChangeListener { _, _ ->
+                    invalidateCaches()
+                    true
+                }
+            },
+        )
     }
 
+    private fun emptyLibraryMessage(config: R2Config, listing: S3Listing): String {
+        val where = if (config.rootPrefix.isEmpty()) {
+            "bucket \"${config.bucket}\""
+        } else {
+            "\"${config.rootPrefix}\" in bucket \"${config.bucket}\""
+        }
+        return if (listing.objects.isEmpty() && listing.prefixes.isEmpty()) {
+            "No files found in $where. Upload series folders, then pull to refresh."
+        } else {
+            "No series folders found in $where. Expected <series>/<chapter>/… or <series>/chapter.cbz."
+        }
+    }
+
+    private fun emptySeriesMessage(seriesName: String, unsupported: Int, hasChapterList: Boolean): String = when {
+        hasChapterList ->
+            "\"$seriesName\" has a chapters.json but no readable chapters. " +
+                "Each entry needs a url (gallery or .cbz), id+source, or pages array."
+        unsupported > 0 ->
+            "\"$seriesName\" only contains archive formats this source cannot open " +
+                "($unsupported file(s)). Convert them to .cbz, or upload loose images."
+        else ->
+            "No chapters found in \"$seriesName\". Expected chapter folders, .cbz files, " +
+                "or a chapters.json with gallery URLs / remote archives / page lists."
+    }
+
+    override fun popularMangaRequest(page: Int) = throw UnsupportedOperationException()
+    override fun popularMangaParse(response: Response) = throw UnsupportedOperationException()
+    override fun latestUpdatesRequest(page: Int) = throw UnsupportedOperationException()
+    override fun latestUpdatesParse(response: Response) = throw UnsupportedOperationException()
+    override fun searchMangaRequest(page: Int, query: String, filters: FilterList) = throw UnsupportedOperationException()
+    override fun searchMangaParse(response: Response) = throw UnsupportedOperationException()
+    override fun mangaDetailsRequest(manga: SManga) = throw UnsupportedOperationException()
+    override fun mangaDetailsParse(response: Response) = throw UnsupportedOperationException()
+    override fun chapterListRequest(manga: SManga) = throw UnsupportedOperationException()
+    override fun chapterListParse(response: Response) = throw UnsupportedOperationException()
+    override fun getMangaUrl(manga: SManga): String = ""
+    override fun getChapterUrl(chapter: SChapter): String = ""
+
     companion object {
+        private const val PAGE_SIZE = 30
+        private const val COVER_THREADS = 6
+        private const val DELIMITER = "/"
+        private const val DEFAULT_REGION = "auto"
+        private const val DEFAULT_CACHE_TTL_SECONDS = 300L
+        private const val DEFAULT_LATEST_PAGES = 10
+        private const val MAX_METADATA_BYTES = 1024L * 1024
         private const val PREF_ACCOUNT = "accountId"
         private const val PREF_ACCESS_KEY = "accessKeyId"
         private const val PREF_SECRET = "secretAccessKey"
         private const val PREF_BUCKET = "bucket"
         private const val PREF_ENDPOINT = "endpoint"
         private const val PREF_PREFIX = "prefix"
+        private const val PREF_PUBLIC_BASE = "publicBaseUrl"
+        private const val PREF_REGION = "region"
+        private const val PREF_CACHE_TTL = "cacheTtl"
+        private const val PREF_LATEST_PAGES = "latestPages"
+        private const val PREF_CLEAR_CACHE = "clearCache"
+        private const val SETUP_MESSAGE =
+            "Open R2 Library settings and set Account ID, Access Key, Secret, and Bucket"
     }
+}
+
+private class ListingCache(private val maxSize: Int) {
+    private val entries = object : LinkedHashMap<String, S3Listing>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, S3Listing>) = size > maxSize
+    }
+
+    fun get(key: String, load: () -> S3Listing): S3Listing {
+        synchronized(entries) { entries[key] }?.let { return it }
+        val value = load()
+        synchronized(entries) { entries[key] = value }
+        return value
+    }
+
+    fun clear() = synchronized(entries) { entries.clear() }
 }

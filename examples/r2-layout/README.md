@@ -17,7 +17,7 @@ manga/
 
 - Root prefix defaults to `manga/` (override in source settings).
 - Each **folder** under that prefix is one title. Folder name = content id.
-- Chapter files are `.cbz` or `.zip`. Sorted naturally by filename. Numbers in the filename become chapter numbers.
+- Chapter files are `.cbz` / `.zip`, **or** a folder of images, **or** `chapters.json` gallery/remote-archive entries. Mix freely. Sorted naturally by filename.
 - Archives must contain image pages (jpg/png/webp/…). Nested folders are fine; `__MACOSX` / dotfiles are skipped.
 
 ## Cover

@@ -67,13 +67,31 @@ internal fun siteFromHost(host: String): SiteId? {
     }
 }
 
-internal fun identifySite(url: String, explicit: String? = null): SiteId {
+internal fun isArchiveSource(value: String?): Boolean {
+    val v = value?.trim()?.lowercase()?.replace(Regex("""\s+"""), "-") ?: return false
+    return v in setOf("zip", "cbz", "archive", "r2", "folder", "dir", "file", "r2-library")
+}
+
+internal fun isAbsoluteHttpUrl(url: String): Boolean = url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)
+
+internal fun isRemoteArchiveUrl(url: String): Boolean {
+    val path = url.trim().substringBefore('?').substringBefore('#').lowercase()
+    return path.endsWith(".zip") || path.endsWith(".cbz")
+}
+
+internal fun tryIdentifySite(url: String, explicit: String? = null): SiteId? {
+    if (isArchiveSource(explicit)) return null
     normalizeSite(explicit)?.let { return it }
-    siteFromHost(hostOf(url))?.let { return it }
+    if (url.isBlank() || isRemoteArchiveUrl(url)) return null
+    return siteFromHost(hostOf(url))
+}
+
+internal fun identifySite(url: String, explicit: String? = null): SiteId {
+    tryIdentifySite(url, explicit)?.let { return it }
     throw Exception(
         "Unknown chapter host \"${hostOf(url).ifBlank { url }}\". " +
             "Set source to nhentai, hentairead, hentainexus, hentai2read, " +
-            "pandachaika, ehentai, or hitomi.",
+            "pandachaika, ehentai, or hitomi — or use a .cbz/.zip / folder chapter.",
     )
 }
 

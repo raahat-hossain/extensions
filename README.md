@@ -68,7 +68,9 @@ bash scripts/build-r2-merge-apk.sh
 
 ## R2 Library (`en.r2-library`) — Suwatte
 
-Same bucket layout (zip/cbz/folder). Suwatte `.stt` is separate from the TachiManga APK.
+v1.7 — same layout as the Mihon extension: mix folder/.cbz chapters with gallery URLs in `details.json` `chapters[]` (or `chapters.json`). Cover refs: `Chapter 1_1`. Gallery hosts: nhentai, HentaiRead, HentaiNexus, Hentai2Read, PandaChaika, E-Hentai / ExHentai, Hitomi.
+
+Suwatte `.stt` is separate from the TachiManga APK. After building, copy `dist/` to Pages at `/suwatte`.
 
 ## Setup (Suwatte sources)
 

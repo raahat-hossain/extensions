@@ -5,6 +5,7 @@ export const SETTINGS = {
   bucket: "bucket",
   endpoint: "endpoint",
   prefix: "prefix",
+  publicBaseUrl: "publicBaseUrl",
 } as const;
 
 export type R2Config = {
@@ -15,6 +16,8 @@ export type R2Config = {
   endpoint: string;
   /** Empty string = list from bucket root. */
   prefix: string;
+  /** Optional r2.dev / custom domain for unsigned image URLs. */
+  publicBaseUrl: string;
 };
 
 const readString = async (key: string): Promise<string> => {
@@ -46,6 +49,7 @@ export const loadConfig = async (): Promise<R2Config> => {
       endpointOverride.replace(/\/+$/, "") ||
       `https://${accountId}.r2.cloudflarestorage.com`,
     prefix: prefixRaw.replace(/^\/+|\/+$/g, ""),
+    publicBaseUrl: (await readString(SETTINGS.publicBaseUrl)).replace(/\/+$/, ""),
   };
 };
 
@@ -66,4 +70,5 @@ export const saveConfig = async (
   await write(SETTINGS.bucket);
   await write(SETTINGS.endpoint, true);
   await write(SETTINGS.prefix, true);
+  await write(SETTINGS.publicBaseUrl, true);
 };

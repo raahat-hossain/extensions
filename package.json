@@ -8,7 +8,7 @@
     "build": "suwatte build && tsx scripts/emit-runners-list.ts",
     "serve": "suwatte serve",
     "smoke": "tsx scripts/smoke.ts",
-    "test:r2": "tsx scripts/test-cover-ref.ts",
+    "test:r2": "tsx scripts/test-cover-ref.ts && tsx scripts/test-r2.ts",
     "test:hr": "tsx scripts/test-hentairead.ts",
     "test:hiperdex": "tsx scripts/test-hiperdex.ts"
   },

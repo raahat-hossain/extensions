@@ -203,5 +203,15 @@ export const presignGet = (
     expiresSeconds,
   }).url;
 
+export const imageUrl = (
+  config: R2Config,
+  key: string,
+  expiresSeconds = 60 * 60,
+): string => {
+  const base = config.publicBaseUrl.replace(/\/+$/, "");
+  if (base) return `${base}/${key.replace(/^\/+/, "")}`;
+  return presignGet(config, key, expiresSeconds);
+};
+
 export const __parseListXmlForTests = parseListXml;
 export const __assertListXmlForTests = assertListXml;

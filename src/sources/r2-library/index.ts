@@ -23,12 +23,20 @@ import {
   basename,
   folderIdFromPrefix,
   isArchiveName,
+  isChaptersFileName,
   isCoverName,
   isDetailsName,
   isImageName,
   naturalCompare,
   parseChapterNumber,
 } from "./archive";
+import {
+  decodePagesChapter,
+  isBucketArchive,
+  isFolderChapter,
+  parseChaptersJson,
+  type ParsedChapter,
+} from "./chapters";
 import { loadConfig, saveConfig, SETTINGS, type R2Config } from "./config";
 import { resolveCoverImage } from "./cover";
 import {
@@ -36,19 +44,25 @@ import {
   parseDetailsJson,
   type DetailsFile,
 } from "./details";
+import { pagesForChapterUrl } from "./gallery";
 import { dataUrlForPage, listImageKeys, openArchiveSession } from "./pages";
-import { getObjectBytes, getObjectText, listAll, presignGet } from "./r2";
+import { getObjectBytes, getObjectText, imageUrl, listAll } from "./r2";
+import { isAbsoluteHttpUrl, isRemoteArchiveUrl, refererForImage } from "./sites";
+import { fetchBytes } from "../_shared/http";
 
 type ChapterRef =
   | { kind: "zip"; key: string; name: string }
   | { kind: "dir"; prefix: string; name: string }
-  | { kind: "loose"; prefix: string; name: string };
+  | { kind: "loose"; prefix: string; name: string }
+  | { kind: "url"; url: string; name: string }
+  | { kind: "pages"; urls: string[]; name: string };
 
 type EntryAssets = {
   id: string;
   prefix: string;
   coverKey?: string;
   detailsKey?: string;
+  chaptersJsonKey?: string;
   /** Zip/cbz archives kept for cover extraction fallbacks. */
   archives: { key: string; name: string }[];
   chapters: ChapterRef[];
@@ -57,6 +71,10 @@ type EntryAssets = {
 const encodeChapterId = (chapter: ChapterRef): string => {
   if (chapter.kind === "zip") return `zip:${encodeURIComponent(chapter.key)}`;
   if (chapter.kind === "dir") return `dir:${encodeURIComponent(chapter.prefix)}`;
+  if (chapter.kind === "url") return `url:${encodeURIComponent(chapter.url)}`;
+  if (chapter.kind === "pages") {
+    return `pages:${encodeURIComponent(JSON.stringify(chapter.urls))}`;
+  }
   return `loose:${encodeURIComponent(chapter.prefix)}`;
 };
 
@@ -71,6 +89,12 @@ const decodeChapterId = (
   }
   if (chapterId.startsWith("loose:")) {
     return { kind: "loose", value: decodeURIComponent(chapterId.slice(6)) };
+  }
+  if (chapterId.startsWith("url:")) {
+    return { kind: "url", value: decodeURIComponent(chapterId.slice(4)) };
+  }
+  if (chapterId.startsWith("pages:")) {
+    return { kind: "pages", value: decodeURIComponent(chapterId.slice(6)) };
   }
   // Legacy ids were bare encodeURIComponent(archiveKey).
   return { kind: "zip", value: decodeURIComponent(chapterId) };
@@ -99,7 +123,7 @@ const toItem = async (
     allowArchiveExtract: false,
     fallbackToPlaceholder: true,
   }),
-  rating: ContentRating.EVERYONE,
+    rating: ContentRating.MATURE,
 });
 
 const buildEntries = async (
@@ -121,6 +145,9 @@ const buildEntries = async (
     )?.key;
     const detailsKey = listed.objects.find((object) =>
       isDetailsName(basename(object.key)),
+    )?.key;
+    const chaptersJsonKey = listed.objects.find((object) =>
+      isChaptersFileName(basename(object.key)),
     )?.key;
     const archives = listed.objects
       .filter((object) => isArchiveName(basename(object.key)))
@@ -182,13 +209,14 @@ const buildEntries = async (
         naturalCompare(basename(a.key), basename(b.key)),
       )[0]?.key;
 
-    if (!chapters.length && !detailsKey && !inferredCover) continue;
+    if (!chapters.length && !detailsKey && !chaptersJsonKey && !inferredCover) continue;
 
     entries.push({
       id,
       prefix,
       coverKey: inferredCover,
       detailsKey,
+      chaptersJsonKey,
       archives,
       chapters,
     });
@@ -258,15 +286,96 @@ const findEntry = async (
   return entry;
 };
 
+const jsonChapterToRef = (chapter: ParsedChapter, seriesPrefix: string): ChapterRef => {
+  const url = chapter.url;
+  const name = chapter.title;
+  const listed = decodePagesChapter(url);
+  if (listed) return { kind: "pages", urls: listed, name };
+  if (isFolderChapter(url)) {
+    return {
+      kind: "dir",
+      prefix: url.endsWith("/") ? url : `${url}/`,
+      name,
+    };
+  }
+  if (isBucketArchive(url)) return { kind: "zip", key: url, name };
+  if (isAbsoluteHttpUrl(url) || url.startsWith("pages:")) {
+    return { kind: "url", url, name };
+  }
+  const prefix = seriesPrefix.replace(/\/+$/, "");
+  const resolved = url.startsWith(prefix) || !prefix ? url : `${prefix}/${url.replace(/^\/+/, "")}`;
+  if (isArchiveName(basename(resolved))) return { kind: "zip", key: resolved, name };
+  if (resolved.endsWith("/")) return { kind: "dir", prefix: resolved, name };
+  return { kind: "url", url: resolved, name };
+};
+
+const loadJsonChapters = async (
+  config: R2Config,
+  entry: EntryAssets,
+): Promise<ChapterRef[]> => {
+  const parsed: ParsedChapter[] = [];
+  if (entry.detailsKey) {
+    try {
+      parsed.push(
+        ...parseChaptersJson(await getObjectText(config, entry.detailsKey), entry.prefix),
+      );
+    } catch (error) {
+      console.log(`Failed to parse details.json chapters for ${entry.id}: ${String(error)}`);
+    }
+  }
+  if (entry.chaptersJsonKey) {
+    try {
+      parsed.push(
+        ...parseChaptersJson(
+          await getObjectText(config, entry.chaptersJsonKey),
+          entry.prefix,
+        ),
+      );
+    } catch (error) {
+      console.log(`Failed to parse chapters.json for ${entry.id}: ${String(error)}`);
+    }
+  }
+  return parsed.map((chapter) => jsonChapterToRef(chapter, entry.prefix));
+};
+
+const chapterFingerprint = (chapter: ChapterRef): string => {
+  if (chapter.kind === "zip") return `zip:${chapter.key}`;
+  if (chapter.kind === "dir") return `dir:${chapter.prefix}`;
+  if (chapter.kind === "loose") return `loose:${chapter.prefix}`;
+  if (chapter.kind === "url") return `url:${chapter.url}`;
+  return `pages:${chapter.urls.join("|")}`;
+};
+
+const mergedChapters = async (
+  config: R2Config,
+  entry: EntryAssets,
+): Promise<ChapterRef[]> => {
+  const extra = await loadJsonChapters(config, entry);
+  const seen = new Set<string>();
+  const merged: ChapterRef[] = [];
+  for (const chapter of [...entry.chapters, ...extra]) {
+    const key = chapterFingerprint(chapter);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(chapter);
+  }
+  merged.sort((left, right) => {
+    const delta =
+      parseChapterNumber(left.name, 0) - parseChapterNumber(right.name, 0);
+    return delta !== 0 ? delta : naturalCompare(left.name, right.name);
+  });
+  return merged;
+};
+
 export default class Target {
   static info: SourceInfo = {
     id: "en.r2-library",
     name: "R2 Library",
-    version: 1.6,
+    version: 1.7,
     website: "https://developers.cloudflare.com/r2/",
     thumbnail: "r2-library.png",
     languages: ["en"],
-    rating: ContentRating.EVERYONE,
+    rating: ContentRating.MATURE,
   };
 
   getConfiguration = (): SourceConfiguration => ({
@@ -279,6 +388,7 @@ export default class Target {
     const bucket = (await ObjectStore.string(SETTINGS.bucket)) ?? "";
     const endpoint = (await ObjectStore.string(SETTINGS.endpoint)) ?? "";
     const prefix = (await ObjectStore.string(SETTINGS.prefix)) ?? "";
+    const publicBaseUrl = (await ObjectStore.string(SETTINGS.publicBaseUrl)) ?? "";
     const hasSecret = !!(await ObjectStore.string(SETTINGS.secretAccessKey));
 
     return {
@@ -286,7 +396,7 @@ export default class Target {
         {
           header: "Cloudflare R2",
           footer:
-            "Object Read API token required. Leave Endpoint blank for the default R2 S3 URL. Leave Root Prefix empty when title folders sit at the bucket root. Chapters can be .cbz/.zip OR folders of images (preferred for large chapters).",
+            "Object Read API token required. Leave Endpoint blank for the default R2 S3 URL. Leave Root Prefix empty when title folders sit at the bucket root. Mix folder/.cbz chapters with gallery URLs in details.json chapters[].",
           views: [
             UITextField({
               id: SETTINGS.accountId,
@@ -324,6 +434,12 @@ export default class Target {
               title: "Root Prefix",
               currentValue: prefix,
               placeholder: "(empty = bucket root)",
+            }),
+            UITextField({
+              id: SETTINGS.publicBaseUrl,
+              title: "Public image URL (optional)",
+              currentValue: publicBaseUrl,
+              placeholder: "https://pub-….r2.dev",
             }),
           ],
         },
@@ -419,12 +535,20 @@ export default class Target {
       }
     }
 
+    const chapters = await mergedChapters(config, entry);
+
     const coverImage = await resolveCoverImage({
       config,
       contentId,
       coverKey,
       details,
       archives: entry.archives,
+      folders: chapters
+        .filter((chapter): chapter is ChapterRef & { kind: "dir" } => chapter.kind === "dir")
+        .map((chapter) => ({ prefix: chapter.prefix, name: chapter.name })),
+      remotes: chapters
+        .filter((chapter): chapter is ChapterRef & { kind: "url" } => chapter.kind === "url")
+        .map((chapter) => ({ url: chapter.url, name: chapter.name })),
       allowArchiveExtract: true,
       fallbackToPlaceholder: true,
     });
@@ -445,7 +569,7 @@ export default class Target {
     return {
       title: contentId,
       coverImage: coverImage,
-      rating: ContentRating.EVERYONE,
+      rating: ContentRating.MATURE,
       status: ContentStatus.UNKNOWN,
       contentType: ContentType.MANGA,
       summary: `Imported from R2 folder ${contentId}/`,
@@ -459,8 +583,9 @@ export default class Target {
   getChapters = async (contentId: string): Promise<Chapter[]> => {
     const config = await loadConfig();
     const entry = await findEntry(config, contentId);
+    const chapters = await mergedChapters(config, entry);
 
-    return entry.chapters.map((chapter, index) => ({
+    return chapters.map((chapter, index) => ({
       id: encodeChapterId(chapter),
       index,
       number: parseChapterNumber(chapter.name, index + 1),
@@ -502,30 +627,54 @@ export default class Target {
         throw new Error(`No images found under ${prefix}`);
       }
       return keys.map((key) => ({
-        url: presignGet(config, key, 60 * 60 * 6),
+        url: imageUrl(config, key, 60 * 60 * 6),
       }));
     }
 
+    if (decoded.kind === "pages") {
+      const urls = JSON.parse(decoded.value) as unknown;
+      if (!Array.isArray(urls)) throw new Error("Invalid pages chapter");
+      return urls
+        .filter((entry): entry is string => typeof entry === "string" && !!entry)
+        .map((url) => ({ url }));
+    }
+
+    if (decoded.kind === "url") {
+      if (isRemoteArchiveUrl(decoded.value)) {
+        const bytes = await fetchBytes(decoded.value, { timeout: 180_000 });
+        const { urls } = openArchiveSession(bytes);
+        return urls.map((url) => ({ url }));
+      }
+      return pagesForChapterUrl(decoded.value);
+    }
+
     const bytes = await getObjectBytes(config, decoded.value);
-    // Keep image bytes in a JSC session; only return tiny URLs across the bridge.
     const { urls } = openArchiveSession(bytes);
     return urls.map((url) => ({ url }));
   };
 
   /**
-   * Resolve session page URLs to data: URIs so Nuke never hits a fake host.
-   * Presigned R2 URLs pass through unchanged.
+   * Session zip pages → data URLs. Gallery CDNs get a Referer so CF/hotlink
+   * checks match chapter reads.
    */
   willRequestImage = async (
     request: NetworkRequest | string,
   ): Promise<NetworkRequest> => {
     const url = typeof request === "string" ? request : request.url;
     const dataUrl = dataUrlForPage(url);
-    if (!dataUrl) {
+    if (dataUrl) {
+      return typeof request === "string"
+        ? { url: dataUrl }
+        : { ...request, url: dataUrl };
+    }
+    const referer = refererForImage(url);
+    if (!referer) {
       return typeof request === "string" ? { url: request } : request;
     }
+    const headers = typeof request === "string" ? {} : { ...(request.headers ?? {}) };
+    if (!headers.Referer && !headers.referer) headers.Referer = referer;
     return typeof request === "string"
-      ? { url: dataUrl }
-      : { ...request, url: dataUrl };
+      ? { url, headers }
+      : { ...request, url, headers };
   };
 }

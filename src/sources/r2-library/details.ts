@@ -12,15 +12,18 @@ import {
  * Only `title` is required. Everything else is optional.
  */
 export type DetailsFile = {
-  title: string;
+  title?: string;
+  author?: string;
+  artist?: string;
   summary?: string;
+  description?: string;
   additionalTitles?: string[];
   /**
    * Cover image. Prefer a `cover.*` file in the folder.
    * Alternatives:
    * - absolute http(s) URL
-   * - chapter page ref: `"[chapter name]_[page name]"`
-   *   e.g. `"chapter 4_24.png"` → page `24.png` inside `chapter 4.cbz`
+   * - `Chapter 1_1` (chapter name + 1-based page)
+   * - `chapter 4_24.png` (chapter + page filename)
    */
   cover?: string;
   banner?: string;
@@ -47,7 +50,8 @@ export type DetailsFile = {
     image?: string;
   }[];
   additionalDetails?: Record<string, string>;
-  genres?: { id?: string; title: string; rating?: string | number }[];
+  genre?: string | string[] | { title?: string; name?: string; id?: string; rating?: string | number }[];
+  genres?: string | string[] | { title?: string; name?: string; id?: string; rating?: string | number }[];
   properties?: {
     id?: string;
     title: string;
@@ -62,6 +66,8 @@ export type DetailsFile = {
   }[];
   /** Tracker IDs, e.g. { anilist: "123", mal: "456" } */
   endpoints?: Record<string, string>;
+  /** Gallery / extra chapters — same shape as chapters.json. */
+  chapters?: unknown;
 };
 
 const asEnum = <T extends Record<string, number>>(
@@ -132,6 +138,24 @@ const tagOf = (entry: {
       : asEnum(RATING, entry.rating, ContentRating.EVERYONE),
 });
 
+const genreTags = (
+  details: DetailsFile,
+): Tag[] | undefined => {
+  const raw = details.genres ?? details.genre;
+  if (!raw) return undefined;
+  const names = (Array.isArray(raw) ? raw : String(raw).split(","))
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (item && typeof item === "object") {
+        return (item.title || item.name || "").trim();
+      }
+      return "";
+    })
+    .filter(Boolean);
+  if (!names.length) return undefined;
+  return names.map((title) => tagOf({ title }));
+};
+
 export const contentFromDetails = (
   details: DetailsFile,
   fallback: {
@@ -145,14 +169,14 @@ export const contentFromDetails = (
   bannerImage: details.banner || fallback.bannerImage,
   artworks: details.artworks,
   webUrl: details.webUrl,
-  rating: asEnum(RATING, details.rating, ContentRating.EVERYONE),
+  rating: asEnum(RATING, details.rating, ContentRating.MATURE),
   status: asEnum(STATUS, details.status, ContentStatus.UNKNOWN),
   contentType: asEnum(TYPE, details.contentType, ContentType.MANGA),
   readingMode:
     details.readingMode == null
       ? undefined
       : asEnum(MODE, details.readingMode, ReadingMode.PAGED_MANGA),
-  summary: details.summary,
+  summary: details.summary || details.description,
   additionalTitles: details.additionalTitles,
   additionalDetails: details.additionalDetails,
   statistics: details.statistics
@@ -163,12 +187,18 @@ export const contentFromDetails = (
         views: details.statistics.views,
       }
     : undefined,
-  credits: details.credits?.map((credit) => ({
+  credits: (details.credits?.length
+    ? details.credits
+    : [
+        details.author ? { name: details.author, role: "author" } : null,
+        details.artist ? { name: details.artist, role: "artist" } : null,
+      ].filter((credit): credit is { name: string; role: string } => !!credit)
+  )?.map((credit) => ({
     name: credit.name,
     role: credit.role,
-    image: credit.image,
+    image: "image" in credit ? credit.image : undefined,
   })),
-  genres: details.genres?.map(tagOf),
+  genres: genreTags(details),
   properties: details.properties?.map((section, index) => ({
     id: section.id ?? `property-${index}`,
     title: section.title,
@@ -186,8 +216,9 @@ export const contentFromDetails = (
 
 export const parseDetailsJson = (raw: string): DetailsFile => {
   const parsed = JSON.parse(raw) as DetailsFile;
-  if (!parsed?.title || typeof parsed.title !== "string") {
-    throw new Error("details.json must include a string title");
+  if (parsed.title != null && typeof parsed.title !== "string") {
+    throw new Error("details.json title must be a string when present");
   }
+  if (parsed.description && !parsed.summary) parsed.summary = parsed.description;
   return parsed;
 };

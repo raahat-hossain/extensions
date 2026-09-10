@@ -40,7 +40,7 @@ const signed = signRequest({
 });
 assert.match(signed.url, /X-Amz-Algorithm=AWS4-HMAC-SHA256/);
 assert.match(signed.url, /X-Amz-Signature=/);
-assert.match(signed.url, /manga%2Fdemo%2Fcover\.jpg/);
+assert.match(signed.url, /\/manga\/demo\/cover\.jpg/);
 
 const headerSigned = signRequest({
   method: "GET",

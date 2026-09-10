@@ -31,20 +31,31 @@ export const isCoverName = (name: string): boolean =>
 export const isDetailsName = (name: string): boolean =>
   /^(details|info|metadata|series)\.json$/i.test(name);
 
+export const isChaptersFileName = (name: string): boolean =>
+  /^(chapters|chapter-list|chapter_list)\.json$/i.test(name);
+
 export type ChapterPageRef = {
   chapter: string;
   page: string;
 };
 
 /**
- * Parse `"[chapter name]_[page name]"` cover refs.
- * Example: `chapter 4_24.png` → { chapter: "chapter 4", page: "24.png" }
+ * Parse cover refs:
+ * - `Chapter 1_1` → chapter name + 1-based page index
+ * - `chapter 4_24.png` → chapter name + page filename
  */
 export const parseChapterPageRef = (
   value: string,
 ): ChapterPageRef | null => {
   const trimmed = value.trim();
-  if (!trimmed || /^https?:\/\//i.test(trimmed) || isCoverName(trimmed)) {
+  if (
+    !trimmed ||
+    /^https?:\/\//i.test(trimmed) ||
+    trimmed.startsWith("data:") ||
+    isCoverName(trimmed) ||
+    trimmed.includes("/") ||
+    trimmed.includes("\\")
+  ) {
     return null;
   }
 
@@ -57,10 +68,25 @@ export const parseChapterPageRef = (
 
   const lower = page.toLowerCase();
   const dot = lower.lastIndexOf(".");
-  if (dot < 0) return null;
+  if (dot < 0) {
+    return /^\d+$/.test(page) ? { chapter, page } : null;
+  }
   if (!IMAGE_EXTENSIONS.has(lower.slice(dot))) return null;
 
   return { chapter, page };
+};
+
+export const chapterNameMatches = (name: string, needle: string): boolean => {
+  const a = name.replace(/\.(cbz|zip)$/i, "").trim().toLowerCase();
+  const b = needle.replace(/\.(cbz|zip)$/i, "").trim().toLowerCase();
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const strip = (value: string) =>
+    value.replace(/^\d+(?:\.\d+)?\s*[-._:)\]\s]+/, "").trim();
+  if (strip(a) === b || a.endsWith(b) || b.endsWith(a)) return true;
+  const left = parseChapterNumber(name, -1);
+  const right = parseChapterNumber(needle, -1);
+  return left >= 0 && right >= 0 && left === right;
 };
 
 export const archiveStem = (name: string): string =>
@@ -78,12 +104,7 @@ export const findArchiveByChapterName = <T extends { name: string }>(
   );
   if (exact) return exact;
 
-  // Allow "004 - chapter 4.cbz" to match "chapter 4"
-  return archives.find((archive) => {
-    const stem = archiveStem(archive.name).toLowerCase();
-    const stripped = stem.replace(/^\d+(\.\d+)?\s*[-._:)\]\s]+/, "").trim();
-    return stripped === needle || stem.endsWith(needle);
-  });
+  return archives.find((archive) => chapterNameMatches(archive.name, chapterName));
 };
 
 const mimeForPage = (pageName: string): string => {
@@ -102,19 +123,25 @@ export const extractArchivePageDataUrl = (
   pageName: string,
 ): string => {
   const files = unzipSync(archiveBytes);
-  const target = pageName.toLowerCase();
-  const entry = Object.entries(files).find(([name, data]) => {
-    if (!data?.length || name.endsWith("/")) return false;
-    if (name.startsWith("__MACOSX/")) return false;
-    return basename(name).toLowerCase() === target;
-  });
+  const images = Object.entries(files)
+    .filter(([name, data]) => {
+      if (!data?.length || name.endsWith("/")) return false;
+      if (name.startsWith("__MACOSX/")) return false;
+      return isImageName(basename(name));
+    })
+    .sort(([left], [right]) => naturalCompare(left, right));
 
-  if (!entry) {
+  const target = pageName.toLowerCase();
+  const indexed = /^\d+$/.test(pageName)
+    ? images[Number(pageName) - 1]
+    : images.find(([name]) => basename(name).toLowerCase() === target);
+
+  if (!indexed) {
     throw new Error(`Page "${pageName}" not found inside archive`);
   }
 
-  const [, data] = entry;
-  return `data:${mimeForPage(pageName)};base64,${bytesToBase64(data as Uint8Array)}`;
+  const [name, data] = indexed;
+  return `data:${mimeForPage(name)};base64,${bytesToBase64(data as Uint8Array)}`;
 };
 
 export const basename = (key: string): string => {

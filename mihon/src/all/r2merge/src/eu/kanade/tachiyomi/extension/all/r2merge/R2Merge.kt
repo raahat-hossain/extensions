@@ -317,19 +317,27 @@ class R2Merge(
         listing: S3Listing,
         metadata: SeriesMetadata? = null,
     ): String? {
-        coverCache[seriesPrefix]?.let { return it }
-        val fromDetails = metadata?.cover?.trim()?.takeIf { it.isNotEmpty() }?.let { cover ->
+        val coverSpec = metadata?.cover?.trim()?.takeIf { it.isNotEmpty() }
+        val cacheKey = coverCacheKey(seriesPrefix, coverSpec)
+        coverCache[cacheKey]?.let { return it }
+        val fromDetails = coverSpec?.let { cover ->
             runCatching { resolveDetailsCover(config, seriesPrefix, listing, cover) }.getOrNull()
         }
+        if (fromDetails != null) {
+            coverCache[cacheKey] = fromDetails
+            return fromDetails
+        }
         val directImages = listing.objects.filter { isImageKey(it.key) && it.key.isChildOf(seriesPrefix) }
-        val url = fromDetails
-            ?: directImages.firstOrNull { it.key.isCoverFile() }?.let { config.imageUrl(it.key).toString() }
+        val url = directImages.firstOrNull { it.key.isCoverFile() }?.let { config.imageUrl(it.key).toString() }
             ?: directImages.minWithOrNull(compareBy(NaturalOrder) { it.key })
                 ?.let { config.imageUrl(it.key).toString() }
             ?: firstPageUrl(config, listing)
-        if (url != null) coverCache[seriesPrefix] = url
+        // Don't pin a fallback while a cover ref is set — retry until the chapter resolves.
+        if (url != null && coverSpec == null) coverCache[cacheKey] = url
         return url
     }
+
+    private fun coverCacheKey(seriesPrefix: String, coverSpec: String?): String = "$seriesPrefix\u0000${coverSpec.orEmpty()}"
 
     /**
      * `details.json` cover: absolute URL, `Chapter 1_1` (name + 1-based index),
@@ -371,11 +379,50 @@ class R2Merge(
         val archiveObjects = listing.objects.filter {
             isArchiveKey(it.key) && it.key.isChildOf(seriesPrefix)
         }
-        val archive = findChapterByName(archiveObjects, ref.chapter) { it.key } ?: return null
-        val entries = archives.zipFor(archive.key).entries()
-            .filter { isImageKey(it.name) && !isHiddenKey(it.name) }
-        val entry = pickCoverPage(entries, ref.page) { it.name } ?: return null
-        return ArchiveInterceptor.pageUrl(archive.key, entry.name)
+        val archive = findChapterByName(archiveObjects, ref.chapter) { it.key }
+        if (archive != null) {
+            val entries = archives.zipFor(archive.key).entries()
+                .filter { isImageKey(it.name) && !isHiddenKey(it.name) }
+            pickCoverPage(entries, ref.page) { it.name }?.let { entry ->
+                return ArchiveInterceptor.pageUrl(archive.key, entry.name)
+            }
+        }
+        return chaptersJsonCoverPage(config, seriesPrefix, listing, ref)
+    }
+
+    private fun chaptersJsonCoverPage(
+        config: R2Config,
+        seriesPrefix: String,
+        listing: S3Listing,
+        ref: CoverPageRef,
+    ): String? {
+        val obj = listing.objects.firstOrNull { isChaptersJson(it.key) } ?: return null
+        val chapters = fetchText(config, obj)?.let { parseChaptersJson(it, json, seriesPrefix) }.orEmpty()
+        val chapter = findChapterByName(chapters, ref.chapter) { it.title } ?: return null
+        val pages = pagesForCover(chapter.url)
+        return pickCoverPage(pages, ref.page, preserveOrder = true) { it.imageUrl.orEmpty() }
+            ?.imageUrl
+    }
+
+    private fun isChaptersJson(key: String): Boolean {
+        val name = key.fileName().lowercase()
+        return name == "chapters.json" || name == "chapter-list.json" || name == "chapter_list.json"
+    }
+
+    private fun pagesForCover(url: String): List<Page> {
+        if (url.startsWith("pages:")) {
+            val raw = String(
+                Base64.decode(url.removePrefix("pages:"), Base64.URL_SAFE),
+                Charsets.UTF_8,
+            )
+            val urls = json.decodeFromString(ListSerializer(String.serializer()), raw)
+            return urls.mapIndexed { index, pageUrl -> Page(index, imageUrl = pageUrl) }
+        }
+        if (tryIdentifySite(url) != null) {
+            val chapter = SChapter.create().apply { this.url = url }
+            return pageListParse(client.newCall(pageListRequest(chapter)).execute())
+        }
+        return localOrArchivePages(url)
     }
 
     private fun firstPageUrl(config: R2Config, listing: S3Listing): String? {

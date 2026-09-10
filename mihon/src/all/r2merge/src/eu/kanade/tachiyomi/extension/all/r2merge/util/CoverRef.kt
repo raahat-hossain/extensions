@@ -49,15 +49,20 @@ internal fun <T> findChapterByName(
 internal fun <T> pickCoverPage(
     items: List<T>,
     page: String,
+    preserveOrder: Boolean = false,
     nameOf: (T) -> String,
 ): T? {
     if (items.isEmpty()) return null
-    val sorted = items.sortedWith(compareBy(NaturalOrder) { nameOf(it) })
+    val ordered = if (preserveOrder) {
+        items
+    } else {
+        items.sortedWith(compareBy(NaturalOrder) { nameOf(it) })
+    }
     if (page.all { it.isDigit() }) {
         val index = page.toInt()
-        if (index > 0) sorted.getOrNull(index - 1)?.let { return it }
+        if (index > 0) ordered.getOrNull(index - 1)?.let { return it }
     }
-    return sorted.firstOrNull { pageNameMatches(nameOf(it).fileName(), page) }
+    return ordered.firstOrNull { pageNameMatches(nameOf(it).fileName(), page) }
 }
 
 internal fun chapterNameMatches(label: String, needle: String): Boolean {

@@ -86,7 +86,7 @@ Resolve order:
 "cover": "Chapter 1_1"
 ```
 
-That is `chapterName_pageIndex` (1-based). `"Chapter 1_1"` opens the chapter folder/archive named `Chapter 1` (also matches `Chapter 001` / `001 - Chapter 1.cbz`) and uses the first image.
+That is `chapterName_pageIndex` (1-based). `"Chapter 1_1"` uses the first page of the chapter titled `Chapter 1` — folder, `.cbz`, **or** a `chapters.json` gallery URL. Also matches `Chapter 001` / `001 - Chapter 1.cbz`.
 
 Legacy filename form still works: `"chapter 4_24.png"` → page `24.png` inside that chapter.
 

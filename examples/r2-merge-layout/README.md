@@ -1,4 +1,4 @@
-# R2 bucket layout for the R2 Merge source
+# R2 bucket layout for the R2 Merge Mihon / TachiManga extension
 
 One folder = one library title. Chapters are **remote gallery/reader URLs** (nhentai, HentaiRead, HentaiNexus, Hentai2Read), not zip files.
 

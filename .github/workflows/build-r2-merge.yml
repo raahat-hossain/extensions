@@ -1,0 +1,47 @@
+name: Build R2 Merge APK
+
+on:
+  push:
+    paths:
+      - "mihon/**"
+      - "scripts/build-r2-merge-apk.sh"
+      - ".github/workflows/build-r2-merge.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Checkout Yuzono extension build host
+        uses: actions/checkout@v4
+        with:
+          repository: yuzono/cursed-manga-extensions
+          path: .ref/yuzono
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform 37
+        run: |
+          sdkmanager "platforms;android-37.0" "build-tools;36.1.0"
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
+
+      - name: Assemble release APK
+        env:
+          YUZONO_DIR: ${{ github.workspace }}/.ref/yuzono
+        run: bash scripts/build-r2-merge-apk.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r2-merge-repo
+          path: repo/

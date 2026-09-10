@@ -1,25 +1,21 @@
-# Suwatte Extensions
+# Extensions
 
-Dev catalog for [Suwatte](https://suwatte.mantton.com/developers/introduction/) source plugins.
+Dev catalog for **Suwatte** sources, plus a **Mihon / TachiManga** APK for merged R2 series.
 
-Parsers for nhentai / HentaiRead / HentaiNexus follow **Yūzōnō** cursed-manga-extensions first, then **Keiyoushi** extensions-source.
+Parsers follow **Yūzōnō** cursed-manga-extensions first, then **Keiyoushi**.
 
-## Sources
+## R2 Merge — Mihon / TachiManga (`eu.kanade.tachiyomi.extension.all.r2merge`)
 
-### R2 Merge (`en.r2-merge`)
+This is **not** a Suwatte `.stt`. TachiManga installs the APK (lib **1.4**).
 
-One library entry that **merges** multiple nhentai / HentaiRead / HentaiNexus (and Hentai2Read) galleries into chapters.
-
-R2 stores metadata + cover. Chapter images are fetched live from the site URLs in `chapters.json`.
+One library title. Chapters are live gallery/reader URLs from nhentai, HentaiRead, HentaiNexus, Hentai2Read.
 
 ```text
 <title-id>/
-  details.json          # optional (same fields as R2 Library)
-  cover.webp            # custom cover
-  chapters.json         # required — remote gallery/reader URLs
+  details.json      # optional
+  cover.webp        # optional custom cover
+  chapters.json     # required
 ```
-
-Example `chapters.json`:
 
 ```json
 {
@@ -31,62 +27,53 @@ Example `chapters.json`:
 }
 ```
 
-`source` is optional when the host is obvious. Layout notes: [`examples/r2-merge-layout/README.md`](examples/r2-merge-layout/README.md)
+`source` is optional when the host is obvious. Aliases: `nh` / `hr` / `hn` / `h2r`. Bare URL strings work. `pages: ["https://…"]` skips site parsing. Same R2 bucket as R2 Library is fine — this source only lists folders that contain `chapters.json`.
 
-Same R2 credentials UI as R2 Library (enter them again on this source — Suwatte stores settings per source). Only folders that contain `chapters.json` show up, so zip titles and merge titles can share a bucket.
+Layout notes: [`examples/r2-merge-layout/README.md`](examples/r2-merge-layout/README.md)
 
-### R2 Library (`en.r2-library`)
+### Install
 
-Reads a private Cloudflare R2 bucket.
+1. **TachiManga:** Browser → Extensions → `+` → APK  
+   `repo/apk/tachiyomi-all.r2merge-v1.4.1.apk`
+2. **Mihon / TachiManga repo:** add  
+   `https://raw.githubusercontent.com/raahat-hossain/extensions/<branch>/repo/index.min.json`
+3. Source settings: Cloudflare account id, R2 access key, secret, bucket. Leave **Root Prefix** empty if title folders sit at bucket root.
+
+### Build APK
+
+Needs Android SDK 37 + a Yūzōnō checkout (`.ref/yuzono` or `YUZONO_DIR`).
+
+```sh
+bash scripts/build-r2-merge-apk.sh
+```
+
+## R2 Library (`en.r2-library`) — Suwatte
+
+Reads a private Cloudflare R2 bucket (zip/cbz chapters).
 
 **Root Prefix**
 
 - Leave **empty** when title folders live at the **bucket root** (common when the bucket itself is named `manga`).
 - Set to `manga` only if objects are under `manga/<title-id>/…` inside the bucket.
 
-Layout (bucket root):
-
 ```text
 <title-id>/
-  details.json          # optional metadata
-  cover.webp            # optional if details.cover is set
+  details.json
+  cover.webp
   chapter 1.cbz | .zip
-  chapter 4.cbz | .zip
 ```
 
-**Cover resolution**
+Configure credentials in Suwatte → source settings.
 
-1. `cover.*` file in the folder
-2. `details.cover` absolute `http(s)` URL
-3. `details.cover` chapter-page ref: `"[chapter name]_[page name]"`
-4. Placeholder tile if none of the above (list/browse still works)
-
-Example:
-
-```json
-"cover": "chapter 4_24.png"
-```
-
-→ page `24.png` inside `chapter 4.cbz` (also matches `004 - chapter 4.cbz`).
-
-Full field list: [`examples/r2-layout/manga/the-static-signal/details.json`](examples/r2-layout/manga/the-static-signal/details.json)
-
-Configure credentials in Suwatte → source settings (Account ID, Access Key, Secret, Bucket, optional endpoint/prefix).
-
-## Setup
+## Setup (Suwatte sources)
 
 ```sh
 npm install
 npm run build
 npm run test:r2
-npm run test:r2-merge
 npm run smoke
 ```
-
-## Install in Suwatte
 
 ```sh
 npm run serve
 ```
-
-Or use the published list URL from this branch's `dist/`.

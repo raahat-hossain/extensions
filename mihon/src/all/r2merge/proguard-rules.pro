@@ -1,0 +1,1 @@
+-keep class eu.kanade.tachiyomi.extension.all.r2merge.** { *; }

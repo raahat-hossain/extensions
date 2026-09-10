@@ -1,4 +1,4 @@
-name: Build R2 Merge APK
+name: Build R2 Library APK
 
 on:
   push:

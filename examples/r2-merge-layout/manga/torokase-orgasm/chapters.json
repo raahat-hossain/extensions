@@ -38,6 +38,16 @@
       "title": "Chapter 7",
       "number": 7,
       "url": "https://cdn.example.com/ch7.cbz"
+    },
+    {
+      "title": "Chapter 8",
+      "number": 8,
+      "url": "Chapter 008.cbz"
+    },
+    {
+      "title": "Chapter 9",
+      "number": 9,
+      "url": "Chapter 009/"
     }
   ]
 }

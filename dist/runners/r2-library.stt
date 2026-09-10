@@ -3866,6 +3866,95 @@ var SourcePackage = (() => {
     }
   });
 
+  // __temp__/sources/_shared/cloudflare.js
+  var require_cloudflare = __commonJS({
+    "__temp__/sources/_shared/cloudflare.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.assertCloudflareCleared = exports.cloudflareFromHeaders = exports.originOf = exports.looksLikeCloudflare = exports.isCloudflareError = exports.throwCloudflare = void 0;
+      var throwCloudflare = (resolutionURL) => {
+        throw new CloudflareError(resolutionURL);
+      };
+      exports.throwCloudflare = throwCloudflare;
+      var isCloudflareError = (error) => {
+        var _a, _b;
+        const name = String((_a = error == null ? void 0 : error.name) != null ? _a : "");
+        const message = String((_b = error == null ? void 0 : error.message) != null ? _b : error);
+        return name.includes("Cloudflare") || message.includes("Cloudflare") || message.includes("cloudflare");
+      };
+      exports.isCloudflareError = isCloudflareError;
+      var looksLikeCloudflare = (body) => /just a moment|cf-mitigated|challenge-platform|cdn-cgi\/challenge|cf-chl|cf-turnstile|challenges\.cloudflare\.com|attention required|verify you are human|checking your browser|enable javascript and cookies/i.test(body);
+      exports.looksLikeCloudflare = looksLikeCloudflare;
+      var originOf = (url) => {
+        const match = /^(https?:\/\/[^/?#]+)/i.exec(url);
+        return (match == null ? void 0 : match[1]) ? `${match[1]}/` : url;
+      };
+      exports.originOf = originOf;
+      var header = (headers, name) => {
+        var _a;
+        if (!headers)
+          return "";
+        if (typeof headers.get === "function") {
+          return String((_a = headers.get(name)) != null ? _a : "").toLowerCase();
+        }
+        const obj = headers;
+        const want = name.toLowerCase();
+        for (const [key, value] of Object.entries(obj)) {
+          if (key.toLowerCase() === want)
+            return String(value != null ? value : "").toLowerCase();
+        }
+        return "";
+      };
+      var cloudflareFromHeaders = (status, headers) => {
+        if (header(headers, "cf-mitigated").includes("challenge"))
+          return true;
+        if (header(headers, "server").includes("cloudflare") && [403, 503, 429].includes(status)) {
+          return true;
+        }
+        const location = header(headers, "location");
+        if (location.includes("cdn-cgi/challenge"))
+          return true;
+        return false;
+      };
+      exports.cloudflareFromHeaders = cloudflareFromHeaders;
+      var assertCloudflareCleared = async (client, resolutionURL, probeURLs = [resolutionURL]) => {
+        var _a, _b;
+        const urls = probeURLs.length ? probeURLs : [resolutionURL];
+        for (const url of urls) {
+          try {
+            const response = await client.request({
+              url,
+              method: "GET",
+              timeout: 2e4
+            });
+            if ((0, exports.cloudflareFromHeaders)(response.status, response.headers)) {
+              (0, exports.throwCloudflare)(resolutionURL);
+            }
+            const body = await response.text();
+            if ((0, exports.looksLikeCloudflare)(body) || (0, exports.cloudflareFromHeaders)(response.status, response.headers)) {
+              (0, exports.throwCloudflare)(resolutionURL);
+            }
+            if (!response.ok && header(response.headers, "server").includes("cloudflare")) {
+              (0, exports.throwCloudflare)(resolutionURL);
+            }
+            if (response.ok)
+              return;
+          } catch (error) {
+            const message = String((_a = error == null ? void 0 : error.message) != null ? _a : error);
+            const name = String((_b = error == null ? void 0 : error.name) != null ? _b : "");
+            if (name.includes("Cloudflare") || message.includes("Cloudflare") || message.includes("cloudflare")) {
+              (0, exports.throwCloudflare)(resolutionURL);
+            }
+          }
+        }
+        (0, exports.throwCloudflare)(resolutionURL);
+      };
+      exports.assertCloudflareCleared = assertCloudflareCleared;
+    }
+  });
+
   // __temp__/sources/_shared/html.js
   var require_html = __commonJS({
     "__temp__/sources/_shared/html.js"(exports) {
@@ -3987,88 +4076,6 @@ var SourcePackage = (() => {
     }
   });
 
-  // __temp__/sources/_shared/cloudflare.js
-  var require_cloudflare = __commonJS({
-    "__temp__/sources/_shared/cloudflare.js"(exports) {
-      "use strict";
-      init_Buffer();
-      init_process();
-      Object.defineProperty(exports, "__esModule", { value: true });
-      exports.assertCloudflareCleared = exports.cloudflareFromHeaders = exports.originOf = exports.looksLikeCloudflare = exports.throwCloudflare = void 0;
-      var throwCloudflare = (resolutionURL) => {
-        throw new CloudflareError(resolutionURL);
-      };
-      exports.throwCloudflare = throwCloudflare;
-      var looksLikeCloudflare = (body) => /just a moment|cf-mitigated|challenge-platform|cdn-cgi\/challenge|cf-chl|cf-turnstile|challenges\.cloudflare\.com|attention required|verify you are human|checking your browser|enable javascript and cookies/i.test(body);
-      exports.looksLikeCloudflare = looksLikeCloudflare;
-      var originOf = (url) => {
-        const match = /^(https?:\/\/[^/?#]+)/i.exec(url);
-        return (match == null ? void 0 : match[1]) ? `${match[1]}/` : url;
-      };
-      exports.originOf = originOf;
-      var header = (headers, name) => {
-        var _a;
-        if (!headers)
-          return "";
-        if (typeof headers.get === "function") {
-          return String((_a = headers.get(name)) != null ? _a : "").toLowerCase();
-        }
-        const obj = headers;
-        const want = name.toLowerCase();
-        for (const [key, value] of Object.entries(obj)) {
-          if (key.toLowerCase() === want)
-            return String(value != null ? value : "").toLowerCase();
-        }
-        return "";
-      };
-      var cloudflareFromHeaders = (status, headers) => {
-        if (header(headers, "cf-mitigated").includes("challenge"))
-          return true;
-        if (header(headers, "server").includes("cloudflare") && [403, 503, 429].includes(status)) {
-          return true;
-        }
-        const location = header(headers, "location");
-        if (location.includes("cdn-cgi/challenge"))
-          return true;
-        return false;
-      };
-      exports.cloudflareFromHeaders = cloudflareFromHeaders;
-      var assertCloudflareCleared = async (client, resolutionURL, probeURLs = [resolutionURL]) => {
-        var _a, _b;
-        const urls = probeURLs.length ? probeURLs : [resolutionURL];
-        for (const url of urls) {
-          try {
-            const response = await client.request({
-              url,
-              method: "GET",
-              timeout: 2e4
-            });
-            if ((0, exports.cloudflareFromHeaders)(response.status, response.headers)) {
-              (0, exports.throwCloudflare)(resolutionURL);
-            }
-            const body = await response.text();
-            if ((0, exports.looksLikeCloudflare)(body) || (0, exports.cloudflareFromHeaders)(response.status, response.headers)) {
-              (0, exports.throwCloudflare)(resolutionURL);
-            }
-            if (!response.ok && header(response.headers, "server").includes("cloudflare")) {
-              (0, exports.throwCloudflare)(resolutionURL);
-            }
-            if (response.ok)
-              return;
-          } catch (error) {
-            const message = String((_a = error == null ? void 0 : error.message) != null ? _a : error);
-            const name = String((_b = error == null ? void 0 : error.name) != null ? _b : "");
-            if (name.includes("Cloudflare") || message.includes("Cloudflare") || message.includes("cloudflare")) {
-              (0, exports.throwCloudflare)(resolutionURL);
-            }
-          }
-        }
-        (0, exports.throwCloudflare)(resolutionURL);
-      };
-      exports.assertCloudflareCleared = assertCloudflareCleared;
-    }
-  });
-
   // __temp__/sources/_shared/http.js
   var require_http2 = __commonJS({
     "__temp__/sources/_shared/http.js"(exports) {
@@ -4076,9 +4083,10 @@ var SourcePackage = (() => {
       init_Buffer();
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
-      exports.withQuery = exports.joinUrl = exports.absoluteUrl = exports.getJson = exports.getText = exports.fetchBytesRange = exports.fetchBytes = exports.fetchJson = exports.postEmpty = exports.postForm = exports.fetchText = exports.http = void 0;
+      exports.withQuery = exports.joinUrl = exports.absoluteUrl = exports.getJson = exports.getText = exports.fetchBytesRange = exports.fetchBytes = exports.fetchJson = exports.postEmpty = exports.postForm = exports.fetchText = exports.bindSourceHttpClient = exports.http = void 0;
       var cloudflare_1 = require_cloudflare();
       var fallbackClient;
+      var boundClient;
       var http = () => {
         if (!fallbackClient) {
           fallbackClient = new HttpClient({
@@ -4089,9 +4097,28 @@ var SourcePackage = (() => {
         return fallbackClient;
       };
       exports.http = http;
+      var bindSourceHttpClient = (client) => {
+        boundClient = client;
+      };
+      exports.bindSourceHttpClient = bindSourceHttpClient;
       var resolveClient = (options) => {
-        var _a;
-        return (_a = options == null ? void 0 : options.client) != null ? _a : (0, exports.http)();
+        var _a, _b;
+        return (_b = (_a = options == null ? void 0 : options.client) != null ? _a : boundClient) != null ? _b : (0, exports.http)();
+      };
+      var cloudflareResponse = (error) => error.response;
+      var rethrowCloudflare = async (error, url, resolutionURL) => {
+        var _a, _b, _c;
+        const resolution = resolutionURL != null ? resolutionURL : (0, cloudflare_1.originOf)(url);
+        if ((0, cloudflare_1.isCloudflareError)(error))
+          (0, cloudflare_1.throwCloudflare)(resolution);
+        const response = cloudflareResponse(error);
+        if (response) {
+          const body = (_b = await ((_a = response.text) == null ? void 0 : _a.call(response).catch(() => ""))) != null ? _b : "";
+          if ((0, cloudflare_1.looksLikeCloudflare)(body) || (0, cloudflare_1.cloudflareFromHeaders)((_c = response.status) != null ? _c : 0, response.headers)) {
+            (0, cloudflare_1.throwCloudflare)(resolution);
+          }
+        }
+        throw error;
       };
       var mergeHeaders = (options) => {
         var _a;
@@ -4108,21 +4135,25 @@ var SourcePackage = (() => {
       };
       var fetchText = async (url, options) => {
         var _a;
-        const response = await resolveClient(options).request({
-          url,
-          method: "GET",
-          headers: mergeHeaders(options),
-          timeout: options == null ? void 0 : options.timeout
-        });
-        if ((0, cloudflare_1.cloudflareFromHeaders)(response.status, response.headers)) {
-          (0, cloudflare_1.throwCloudflare)((_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url));
+        try {
+          const response = await resolveClient(options).request({
+            url,
+            method: "GET",
+            headers: mergeHeaders(options),
+            timeout: options == null ? void 0 : options.timeout
+          });
+          if ((0, cloudflare_1.cloudflareFromHeaders)(response.status, response.headers)) {
+            (0, cloudflare_1.throwCloudflare)((_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url));
+          }
+          const body = await response.text();
+          assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
+          if (!response.ok) {
+            throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
+          }
+          return body;
+        } catch (error) {
+          return rethrowCloudflare(error, url, options == null ? void 0 : options.cloudflareResolutionURL);
         }
-        const body = await response.text();
-        assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
-        if (!response.ok) {
-          throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
-        }
-        return body;
       };
       exports.fetchText = fetchText;
       var postForm = async (url, fields, options) => {
@@ -4174,21 +4205,25 @@ var SourcePackage = (() => {
       exports.fetchJson = fetchJson;
       var fetchBytes = async (url, options) => {
         var _a;
-        const response = await resolveClient(options).request({
-          url,
-          method: "GET",
-          headers: mergeHeaders(options),
-          timeout: options == null ? void 0 : options.timeout
-        });
-        if (!response.ok) {
-          const body = await response.text();
-          assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
-          throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
+        try {
+          const response = await resolveClient(options).request({
+            url,
+            method: "GET",
+            headers: mergeHeaders(options),
+            timeout: options == null ? void 0 : options.timeout
+          });
+          if (!response.ok) {
+            const body = await response.text();
+            assertNotCloudflare(url, response.status, body, response.headers, options == null ? void 0 : options.cloudflareResolutionURL);
+            throw new Error(`GET ${url} failed (${response.status}): ${body.slice(0, 180)}`);
+          }
+          if (response.headers.get("cf-mitigated")) {
+            (0, cloudflare_1.throwCloudflare)((_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url));
+          }
+          return response.bytes();
+        } catch (error) {
+          return rethrowCloudflare(error, url, options == null ? void 0 : options.cloudflareResolutionURL);
         }
-        if (response.headers.get("cf-mitigated")) {
-          (0, cloudflare_1.throwCloudflare)((_a = options == null ? void 0 : options.cloudflareResolutionURL) != null ? _a : (0, cloudflare_1.originOf)(url));
-        }
-        return response.bytes();
       };
       exports.fetchBytes = fetchBytes;
       var fetchBytesRange = async (url, range, options) => {
@@ -5213,6 +5248,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.imageUrlsOf = exports.pagesForChapterUrl = void 0;
+      var cloudflare_1 = require_cloudflare();
       var html_1 = require_html();
       var http_1 = require_http2();
       var zip_1 = require_zip();
@@ -5313,6 +5349,8 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
                 if (pages.length)
                   return pages;
               } catch (error) {
+                if ((0, cloudflare_1.isCloudflareError)(error))
+                  throw error;
                 lastError = error;
               }
             }
@@ -5412,7 +5450,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       init_Buffer();
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
-      exports.listImageKeys = exports.openArchiveSession = exports.dataUrlForPage = exports.parsePageUrl = exports.pageUrl = exports.PAGE_HOST = void 0;
+      exports.listImageKeys = exports.openArchiveSession = exports.b64ForPage = exports.dataUrlForPage = exports.parsePageUrl = exports.pageUrl = exports.PAGE_HOST = void 0;
       var fflate_1 = require_browser();
       var crypto_1 = require_crypto();
       var archive_1 = require_archive();
@@ -5472,6 +5510,15 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
         return `data:${page.mime};base64,${(0, crypto_1.bytesToBase64)(page.bytes)}`;
       };
       exports.dataUrlForPage = dataUrlForPage;
+      var b64ForPage = (url) => {
+        const parsed = (0, exports.parsePageUrl)(url);
+        if (!parsed)
+          return null;
+        const session = sessions.get(parsed.sessionId);
+        const page = session == null ? void 0 : session.pages[parsed.index];
+        return page ? (0, crypto_1.bytesToBase64)(page.bytes) : null;
+      };
+      exports.b64ForPage = b64ForPage;
       var openArchiveSession = (archiveBytes) => {
         pruneSessions();
         if (archiveBytes.byteLength > MAX_ARCHIVE_BYTES) {
@@ -5779,13 +5826,13 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       init_Buffer();
       init_process();
       Object.defineProperty(exports, "__esModule", { value: true });
-      exports.resolveCoverImage = exports.classifyCoverSpec = exports.relativeCoverKey = exports.PLACEHOLDER_COVER = void 0;
+      exports.resolveCoverImage = exports.classifyCoverSpec = exports.relativeCoverKey = exports.isUsableCoverUrl = void 0;
       var archive_1 = require_archive();
+      var cloudflare_1 = require_cloudflare();
       var gallery_1 = require_gallery();
       var pages_1 = require_pages();
       var r2_1 = require_r2();
       var coverCache = /* @__PURE__ */ new Map();
-      exports.PLACEHOLDER_COVER = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAPElEQVR42mNgYGD4z8DAwMDAyMjI8N/RhD4z8DIyAhlwBRABRkZGf6D5MEKYJJwBTA+AFjpAwB+1Qn6nY5qAAAAAABJRU5ErkJggg==";
       var pickImage = (keys, page) => {
         if (/^\d+$/.test(page))
           return keys[Number(page) - 1];
@@ -5796,6 +5843,8 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
           return name === target || name.replace(/\.[^.]+$/, "") === target.replace(/\.[^.]+$/, "");
         });
       };
+      var isUsableCoverUrl = (url) => /^https?:\/\//i.test(url.trim());
+      exports.isUsableCoverUrl = isUsableCoverUrl;
       var relativeCoverKey = (cover, seriesPrefix) => {
         const prefix = seriesPrefix.replace(/\/+$/, "");
         const trimmed = cover.replace(/^\/+/, "");
@@ -5820,7 +5869,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       exports.classifyCoverSpec = classifyCoverSpec;
       var coverCacheKey = (config, contentId, coverSpec) => `${config.bucket}:${contentId}\0${coverSpec != null ? coverSpec : ""}`;
       var resolveCoverRef = async (options) => {
-        const { config, ref, archives, folders, remotes, allowArchiveExtract } = options;
+        const { config, ref, folders, remotes } = options;
         const folder = folders.find((entry) => (0, archive_1.chapterNameMatches)(entry.name, ref.chapter));
         if (folder) {
           const listed = await (0, r2_1.listAll)(config, folder.prefix);
@@ -5829,30 +5878,22 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
           if (key)
             return (0, r2_1.imageUrl)(config, key, 60 * 60);
         }
-        if (allowArchiveExtract) {
-          const archive = (0, archive_1.findArchiveByChapterName)(archives, ref.chapter);
-          if (archive) {
-            try {
-              const bytes = await (0, r2_1.getObjectBytes)(config, archive.key);
-              return (0, archive_1.extractArchivePageDataUrl)(bytes, ref.page);
-            } catch {
-            }
-          }
-        }
         const remote = remotes.find((entry) => (0, archive_1.chapterNameMatches)(entry.name, ref.chapter));
         if (remote) {
           try {
             const pages = await (0, gallery_1.pagesForChapterUrl)(remote.url);
-            const urls = (0, gallery_1.imageUrlsOf)(pages);
+            const urls = (0, gallery_1.imageUrlsOf)(pages).filter(exports.isUsableCoverUrl);
             return pickImage(urls, ref.page);
-          } catch {
+          } catch (error) {
+            if ((0, cloudflare_1.isCloudflareError)(error))
+              throw error;
           }
         }
         return void 0;
       };
       var resolveCoverImage = async (options) => {
         var _a;
-        const { config, contentId, seriesPrefix = "", coverKey, details, archives, folders = [], remotes = [], allowArchiveExtract = true, fallbackToPlaceholder = false } = options;
+        const { config, contentId, seriesPrefix = "", coverKey, details, archives, folders = [], remotes = [], allowArchiveExtract = true } = options;
         const coverValue = ((_a = details == null ? void 0 : details.cover) == null ? void 0 : _a.trim()) || void 0;
         const cacheKey = coverCacheKey(config, contentId, coverValue);
         const cached = coverCache.get(cacheKey);
@@ -5861,11 +5902,11 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
         if (coverValue) {
           const spec = (0, exports.classifyCoverSpec)(coverValue, seriesPrefix);
           let resolved;
-          if ((spec == null ? void 0 : spec.kind) === "direct")
-            resolved = spec.value;
-          else if ((spec == null ? void 0 : spec.kind) === "key")
+          if ((spec == null ? void 0 : spec.kind) === "direct") {
+            resolved = (0, exports.isUsableCoverUrl)(spec.value) ? spec.value : void 0;
+          } else if ((spec == null ? void 0 : spec.kind) === "key") {
             resolved = (0, r2_1.imageUrl)(config, spec.key, 60 * 60);
-          else if ((spec == null ? void 0 : spec.kind) === "ref") {
+          } else if ((spec == null ? void 0 : spec.kind) === "ref") {
             resolved = await resolveCoverRef({
               config,
               ref: spec.ref,
@@ -5875,49 +5916,31 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
               allowArchiveExtract
             });
           }
-          if (resolved) {
+          if (resolved && (0, exports.isUsableCoverUrl)(resolved)) {
             coverCache.set(cacheKey, resolved);
             return resolved;
           }
         }
-        const fallback = async () => {
-          if (coverKey)
-            return (0, r2_1.imageUrl)(config, coverKey, 60 * 60);
-          if (folders[0]) {
-            try {
-              const listed = await (0, r2_1.listAll)(config, folders[0].prefix);
-              const key = (0, pages_1.listImageKeys)(listed.objects.map((object) => object.key))[0];
-              if (key)
-                return (0, r2_1.imageUrl)(config, key, 60 * 60);
-            } catch {
+        if (coverKey) {
+          const url = (0, r2_1.imageUrl)(config, coverKey, 60 * 60);
+          if (!coverValue)
+            coverCache.set(cacheKey, url);
+          return url;
+        }
+        if (folders[0]) {
+          try {
+            const listed = await (0, r2_1.listAll)(config, folders[0].prefix);
+            const key = (0, pages_1.listImageKeys)(listed.objects.map((object) => object.key))[0];
+            if (key) {
+              const url = (0, r2_1.imageUrl)(config, key, 60 * 60);
+              if (!coverValue)
+                coverCache.set(cacheKey, url);
+              return url;
             }
+          } catch {
           }
-          if (allowArchiveExtract && archives[0]) {
-            try {
-              const bytes = await (0, r2_1.getObjectBytes)(config, archives[0].key);
-              for (const guess of [
-                "1",
-                "1.png",
-                "01.png",
-                "001.png",
-                "1.jpg",
-                "01.jpg",
-                "cover.png"
-              ]) {
-                try {
-                  return (0, archive_1.extractArchivePageDataUrl)(bytes, guess);
-                } catch {
-                }
-              }
-            } catch {
-            }
-          }
-          return fallbackToPlaceholder ? exports.PLACEHOLDER_COVER : void 0;
-        };
-        const url = await fallback();
-        if (url && !coverValue)
-          coverCache.set(cacheKey, url);
-        return url;
+        }
+        return void 0;
       };
       exports.resolveCoverImage = resolveCoverImage;
     }
@@ -6063,6 +6086,34 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
     }
   });
 
+  // __temp__/sources/_shared/client.js
+  var require_client2 = __commonJS({
+    "__temp__/sources/_shared/client.js"(exports) {
+      "use strict";
+      init_Buffer();
+      init_process();
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.createProtectedClient = exports.browserHeaders = exports.BROWSER_ACCEPT_LANGUAGE = exports.BROWSER_ACCEPT = void 0;
+      exports.BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
+      exports.BROWSER_ACCEPT_LANGUAGE = "en-US,en;q=0.9";
+      var browserHeaders = (extras = {}) => ({
+        Accept: exports.BROWSER_ACCEPT,
+        "Accept-Language": exports.BROWSER_ACCEPT_LANGUAGE,
+        ...extras
+      });
+      exports.browserHeaders = browserHeaders;
+      var createProtectedClient = (resolutionURL, extras = {}) => new HttpClient({
+        timeout: 45e3,
+        cloudflareResolutionURL: resolutionURL,
+        headers: (0, exports.browserHeaders)({
+          Referer: resolutionURL.endsWith("/") ? resolutionURL : `${resolutionURL}/`,
+          ...extras
+        })
+      });
+      exports.createProtectedClient = createProtectedClient;
+    }
+  });
+
   // __temp__/sources/r2-library/index.js
   var require_r2_library = __commonJS({
     "__temp__/sources/r2-library/index.js"(exports) {
@@ -6081,7 +6132,9 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       var pages_1 = require_pages();
       var r2_1 = require_r2();
       var sites_1 = require_sites();
+      var client_1 = require_client2();
       var http_1 = require_http2();
+      var constants_1 = require_constants();
       var encodeChapterId = (chapter) => {
         if (chapter.kind === "zip")
           return `zip:${encodeURIComponent(chapter.key)}`;
@@ -6329,16 +6382,30 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
             archives: entry.archives,
             folders,
             remotes,
-            allowArchiveExtract: false,
-            fallbackToPlaceholder: true
+            allowArchiveExtract: false
           }),
           rating: types_1.ContentRating.MATURE
         };
       };
       var Target = class {
         constructor() {
+          /**
+           * Owned client (no validateStatus: true) so native CloudflareError fires
+           * and Resolve cookies stick here. Gallery fetches bind to this client.
+           */
+          __publicField(this, "client", (() => {
+            const http = new HttpClient({
+              timeout: 45e3,
+              cloudflareResolutionURL: constants_1.CF_RESOLVE,
+              headers: (0, client_1.browserHeaders)()
+            });
+            (0, http_1.bindSourceHttpClient)(http);
+            return http;
+          })());
           __publicField(this, "getConfiguration", () => ({
-            endpoint: ["anilist", "mal"]
+            endpoint: ["anilist", "mal"],
+            useClientForImageRequests: true,
+            cloudflareResolutionURL: constants_1.CF_RESOLVE
           }));
           __publicField(this, "getSettingsPage", async () => {
             var _a, _b, _c, _d, _e, _f;
@@ -6395,6 +6462,16 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
                       title: "Public image URL (optional)",
                       currentValue: publicBaseUrl,
                       placeholder: "https://pub-\u2026.r2.dev"
+                    })
+                  ]
+                },
+                {
+                  header: "Cloudflare",
+                  footer: "Gallery hosts (HentaiRead, etc.) use the same Resolve WebView as the standalone sources. Complete the check, then reopen the chapter. Safari cookies are not this source's jar.",
+                  views: [
+                    (0, types_1.UIWebViewButton)({
+                      title: "Open HentaiRead Challenge",
+                      url: { url: constants_1.CF_RESOLVE }
                     })
                   ]
                 }
@@ -6473,18 +6550,14 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
               archives: entry.archives,
               folders,
               remotes,
-              allowArchiveExtract: true,
-              fallbackToPlaceholder: true
+              allowArchiveExtract: true
             });
-            if (!coverImage) {
-              throw new Error(`Missing cover for ${contentId}. Add cover.(png|jpg|webp), put images in a chapter folder, or set details.cover.`);
-            }
             if (details) {
-              return (0, details_1.contentFromDetails)({ ...details, cover: void 0 }, { id: contentId, coverImage });
+              return (0, details_1.contentFromDetails)({ ...details, cover: void 0 }, { id: contentId, coverImage: coverImage != null ? coverImage : "" });
             }
             return {
               title: contentId,
-              coverImage,
+              coverImage: coverImage != null ? coverImage : "",
               rating: types_1.ContentRating.MATURE,
               status: types_1.ContentStatus.UNKNOWN,
               contentType: types_1.ContentType.MANGA,
@@ -6546,13 +6619,19 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
               if ((0, sites_1.isRemoteArchiveUrl)(decoded.value)) {
                 const bytes2 = await (0, http_1.fetchBytes)(decoded.value, { timeout: 18e4 });
                 const { urls: urls2 } = (0, pages_1.openArchiveSession)(bytes2);
-                return urls2.map((url) => ({ url }));
+                return urls2.map((url) => {
+                  const b64 = (0, pages_1.b64ForPage)(url);
+                  return b64 ? { b64 } : { url };
+                });
               }
               return (0, gallery_1.pagesForChapterUrl)(decoded.value);
             }
             const bytes = await (0, r2_1.getObjectBytes)(config, decoded.value);
             const { urls } = (0, pages_1.openArchiveSession)(bytes);
-            return urls.map((url) => ({ url }));
+            return urls.map((url) => {
+              const b64 = (0, pages_1.b64ForPage)(url);
+              return b64 ? { b64 } : { url };
+            });
           });
           /**
            * Session zip pages → data URLs. Gallery CDNs get a Referer so CF/hotlink
@@ -6579,7 +6658,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       __publicField(Target, "info", {
         id: "en.r2-library",
         name: "R2 Library",
-        version: 1.8,
+        version: 1.9,
         website: "https://developers.cloudflare.com/r2/",
         thumbnail: "r2-library.png",
         languages: ["en"],
@@ -6597,7 +6676,7 @@ ${additionalTitles.map((t) => `- ${t}`).join("\n")}`);
       var runtime = require_runtime();
       var sourceModule = require_r2_library();
       var cls = runtime.resolveDefaultExport(sourceModule);
-      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.8, "website": "https://developers.cloudflare.com/r2/", "thumbnail": "r2-library.png", "languages": ["en"], "rating": 2 };
+      exports.SourceMetadata = { "id": "en.r2-library", "name": "R2 Library", "version": 1.9, "website": "https://developers.cloudflare.com/r2/", "thumbnail": "r2-library.png", "languages": ["en"], "rating": 2 };
       exports.SourceConfiguration = null;
       exports.bootstrap = function bootstrap() {
         var args = null;

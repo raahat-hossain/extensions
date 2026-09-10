@@ -2,6 +2,7 @@
 
 import {
   cloudflareFromHeaders,
+  isCloudflareError,
   looksLikeCloudflare,
   originOf,
   throwCloudflare,
@@ -10,6 +11,7 @@ import {
 export type SourceHttpClient = InstanceType<typeof HttpClient>;
 
 let fallbackClient: SourceHttpClient | undefined;
+let boundClient: SourceHttpClient | undefined;
 
 /** Fallback only — CF-protected sources MUST pass their own `client`. */
 export const http = (): SourceHttpClient => {
@@ -20,6 +22,15 @@ export const http = (): SourceHttpClient => {
     });
   }
   return fallbackClient;
+};
+
+/**
+ * Bind the source's `this.client` so gallery fetches share the CF cookie jar.
+ * Do NOT bind the R2/S3 client — that one uses validateStatus: () => true and
+ * skips native CloudflareError throws.
+ */
+export const bindSourceHttpClient = (client: SourceHttpClient): void => {
+  boundClient = client;
 };
 
 export type FetchOptions = {
@@ -33,7 +44,35 @@ export type FetchOptions = {
 };
 
 const resolveClient = (options?: FetchOptions): SourceHttpClient =>
-  options?.client ?? http();
+  options?.client ?? boundClient ?? http();
+
+const cloudflareResponse = (
+  error: unknown,
+):
+  | { status?: number; headers?: unknown; text?: () => Promise<string> }
+  | undefined =>
+  (error as { response?: { status?: number; headers?: unknown; text?: () => Promise<string> } })
+    .response;
+
+const rethrowCloudflare = async (
+  error: unknown,
+  url: string,
+  resolutionURL?: string,
+): Promise<never> => {
+  const resolution = resolutionURL ?? originOf(url);
+  if (isCloudflareError(error)) throwCloudflare(resolution);
+  const response = cloudflareResponse(error);
+  if (response) {
+    const body = (await response.text?.().catch(() => "")) ?? "";
+    if (
+      looksLikeCloudflare(body) ||
+      cloudflareFromHeaders(response.status ?? 0, response.headers as never)
+    ) {
+      throwCloudflare(resolution);
+    }
+  }
+  throw error;
+};
 
 const mergeHeaders = (
   options?: FetchOptions,
@@ -64,30 +103,34 @@ export const fetchText = async (
   url: string,
   options?: FetchOptions,
 ): Promise<string> => {
-  const response = await resolveClient(options).request({
-    url,
-    method: "GET",
-    headers: mergeHeaders(options),
-    timeout: options?.timeout,
-  });
-  // Throw on CF headers before waiting to fully materialize/parse body UI-side.
-  if (cloudflareFromHeaders(response.status, response.headers)) {
-    throwCloudflare(options?.cloudflareResolutionURL ?? originOf(url));
-  }
-  const body = await response.text();
-  assertNotCloudflare(
-    url,
-    response.status,
-    body,
-    response.headers,
-    options?.cloudflareResolutionURL,
-  );
-  if (!response.ok) {
-    throw new Error(
-      `GET ${url} failed (${response.status}): ${body.slice(0, 180)}`,
+  try {
+    const response = await resolveClient(options).request({
+      url,
+      method: "GET",
+      headers: mergeHeaders(options),
+      timeout: options?.timeout,
+    });
+    // Throw on CF headers before waiting to fully materialize/parse body UI-side.
+    if (cloudflareFromHeaders(response.status, response.headers)) {
+      throwCloudflare(options?.cloudflareResolutionURL ?? originOf(url));
+    }
+    const body = await response.text();
+    assertNotCloudflare(
+      url,
+      response.status,
+      body,
+      response.headers,
+      options?.cloudflareResolutionURL,
     );
+    if (!response.ok) {
+      throw new Error(
+        `GET ${url} failed (${response.status}): ${body.slice(0, 180)}`,
+      );
+    }
+    return body;
+  } catch (error) {
+    return rethrowCloudflare(error, url, options?.cloudflareResolutionURL);
   }
-  return body;
 };
 
 export const postForm = async (
@@ -172,29 +215,33 @@ export const fetchBytes = async (
   url: string,
   options?: FetchOptions,
 ): Promise<Uint8Array> => {
-  const response = await resolveClient(options).request({
-    url,
-    method: "GET",
-    headers: mergeHeaders(options),
-    timeout: options?.timeout,
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    assertNotCloudflare(
+  try {
+    const response = await resolveClient(options).request({
       url,
-      response.status,
-      body,
-      response.headers,
-      options?.cloudflareResolutionURL,
-    );
-    throw new Error(
-      `GET ${url} failed (${response.status}): ${body.slice(0, 180)}`,
-    );
+      method: "GET",
+      headers: mergeHeaders(options),
+      timeout: options?.timeout,
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      assertNotCloudflare(
+        url,
+        response.status,
+        body,
+        response.headers,
+        options?.cloudflareResolutionURL,
+      );
+      throw new Error(
+        `GET ${url} failed (${response.status}): ${body.slice(0, 180)}`,
+      );
+    }
+    if (response.headers.get("cf-mitigated")) {
+      throwCloudflare(options?.cloudflareResolutionURL ?? originOf(url));
+    }
+    return response.bytes();
+  } catch (error) {
+    return rethrowCloudflare(error, url, options?.cloudflareResolutionURL);
   }
-  if (response.headers.get("cf-mitigated")) {
-    throwCloudflare(options?.cloudflareResolutionURL ?? originOf(url));
-  }
-  return response.bytes();
 };
 
 /** GET with optional `Range` header (Hitomi nozomi / index slices). */

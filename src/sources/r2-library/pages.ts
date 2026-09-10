@@ -76,6 +76,14 @@ export const dataUrlForPage = (url: string): string | null => {
   return `data:${page.mime};base64,${bytesToBase64(page.bytes)}`;
 };
 
+export const b64ForPage = (url: string): string | null => {
+  const parsed = parsePageUrl(url);
+  if (!parsed) return null;
+  const session = sessions.get(parsed.sessionId);
+  const page = session?.pages[parsed.index];
+  return page ? bytesToBase64(page.bytes) : null;
+};
+
 /** Unzip a CBZ/ZIP into a session; returns lightweight page URLs. */
 export const openArchiveSession = (
   archiveBytes: Uint8Array,

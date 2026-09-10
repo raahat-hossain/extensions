@@ -1,4 +1,5 @@
 import type { ChapterPage } from "@suwatte/toolchain/types";
+import { isCloudflareError } from "../_shared/cloudflare";
 import { allMatches, attr, decodeEntities, firstMatch, stripTags } from "../_shared/html";
 import { absoluteUrl, fetchBytes, fetchJson, fetchText } from "../_shared/http";
 import { extractZipImagePages } from "../_shared/zip";
@@ -121,6 +122,7 @@ const pagesForSite = async (site: SiteId, url: string): Promise<ChapterPage[]> =
           const pages = parseChapterPages(html);
           if (pages.length) return pages;
         } catch (error) {
+          if (isCloudflareError(error)) throw error;
           lastError = error;
         }
       }

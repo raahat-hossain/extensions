@@ -13,6 +13,7 @@ import {
 } from "../src/sources/r2-library/chapters.ts";
 import {
   classifyCoverSpec,
+  isUsableCoverUrl,
   relativeCoverKey,
 } from "../src/sources/r2-library/cover.ts";
 import { tryIdentifySite } from "../src/sources/r2-library/sites.ts";
@@ -103,6 +104,8 @@ assert.deepEqual(classifyCoverSpec("art/cover.webp", "series/demo/"), {
 });
 assert.equal(relativeCoverKey("Chapter 1_1", "series/demo"), null);
 assert.equal(relativeCoverKey("front.jpg", ""), "front.jpg");
+assert.equal(isUsableCoverUrl("https://cdn.example/cover.webp"), true);
+assert.equal(isUsableCoverUrl("data:image/png;base64,iVBOR/abc+def=="), false);
 
 const fromArray = parseChaptersJson(
   JSON.stringify(["https://nhentai.net/g/1/", { pages: ["https://a/1.jpg", "https://a/2.jpg"] }]),

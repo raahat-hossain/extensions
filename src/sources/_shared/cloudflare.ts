@@ -4,6 +4,16 @@ export const throwCloudflare = (resolutionURL: string): never => {
   throw new CloudflareError(resolutionURL);
 };
 
+export const isCloudflareError = (error: unknown): boolean => {
+  const name = String((error as { name?: string })?.name ?? "");
+  const message = String((error as { message?: string })?.message ?? error);
+  return (
+    name.includes("Cloudflare") ||
+    message.includes("Cloudflare") ||
+    message.includes("cloudflare")
+  );
+};
+
 export const looksLikeCloudflare = (body: string): boolean =>
   /just a moment|cf-mitigated|challenge-platform|cdn-cgi\/challenge|cf-chl|cf-turnstile|challenges\.cloudflare\.com|attention required|verify you are human|checking your browser|enable javascript and cookies/i.test(
     body,

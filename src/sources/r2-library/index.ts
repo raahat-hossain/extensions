@@ -5,6 +5,7 @@ import {
   ContentStatus,
   ContentType,
   UITextField,
+  UIWebViewButton,
   type Chapter,
   type ChapterPage,
   type Content,
@@ -45,10 +46,12 @@ import {
   type DetailsFile,
 } from "./details";
 import { pagesForChapterUrl } from "./gallery";
-import { dataUrlForPage, listImageKeys, openArchiveSession } from "./pages";
+import { b64ForPage, dataUrlForPage, listImageKeys, openArchiveSession } from "./pages";
 import { getObjectBytes, getObjectText, imageUrl, listAll } from "./r2";
 import { isAbsoluteHttpUrl, isRemoteArchiveUrl, refererForImage } from "./sites";
-import { fetchBytes } from "../_shared/http";
+import { browserHeaders } from "../_shared/client";
+import { bindSourceHttpClient, fetchBytes } from "../_shared/http";
+import { CF_RESOLVE } from "../hentairead/constants";
 
 type ChapterMeta = {
   name: string;
@@ -400,26 +403,42 @@ const toItem = async (
       folders,
       remotes,
       allowArchiveExtract: false,
-      fallbackToPlaceholder: true,
     }),
     rating: ContentRating.MATURE,
   };
 };
 
 export default class Target {
+  /**
+   * Owned client (no validateStatus: true) so native CloudflareError fires
+   * and Resolve cookies stick here. Gallery fetches bind to this client.
+   */
+  client = (() => {
+    const http = new HttpClient({
+      timeout: 45_000,
+      cloudflareResolutionURL: CF_RESOLVE,
+      headers: browserHeaders(),
+    });
+    bindSourceHttpClient(http);
+    return http;
+  })();
+
   static info: SourceInfo = {
     id: "en.r2-library",
     name: "R2 Library",
-    version: 1.8,
+    version: 1.9,
     website: "https://developers.cloudflare.com/r2/",
     thumbnail: "r2-library.png",
     languages: ["en"],
     rating: ContentRating.MATURE,
   };
 
-  getConfiguration = (): SourceConfiguration => ({
-    endpoint: ["anilist", "mal"],
-  });
+  getConfiguration = (): SourceConfiguration =>
+    ({
+      endpoint: ["anilist", "mal"],
+      useClientForImageRequests: true,
+      cloudflareResolutionURL: CF_RESOLVE,
+    }) as SourceConfiguration;
 
   getSettingsPage = async (): Promise<UIForm> => {
     const accountId = (await ObjectStore.string(SETTINGS.accountId)) ?? "";
@@ -479,6 +498,17 @@ export default class Target {
               title: "Public image URL (optional)",
               currentValue: publicBaseUrl,
               placeholder: "https://pub-….r2.dev",
+            }),
+          ],
+        },
+        {
+          header: "Cloudflare",
+          footer:
+            "Gallery hosts (HentaiRead, etc.) use the same Resolve WebView as the standalone sources. Complete the check, then reopen the chapter. Safari cookies are not this source's jar.",
+          views: [
+            UIWebViewButton({
+              title: "Open HentaiRead Challenge",
+              url: { url: CF_RESOLVE },
             }),
           ],
         },
@@ -576,25 +606,18 @@ export default class Target {
       folders,
       remotes,
       allowArchiveExtract: true,
-      fallbackToPlaceholder: true,
     });
-
-    if (!coverImage) {
-      throw new Error(
-        `Missing cover for ${contentId}. Add cover.(png|jpg|webp), put images in a chapter folder, or set details.cover.`,
-      );
-    }
 
     if (details) {
       return contentFromDetails(
         { ...details, cover: undefined },
-        { id: contentId, coverImage: coverImage },
+        { id: contentId, coverImage: coverImage ?? "" },
       );
     }
 
     return {
       title: contentId,
-      coverImage: coverImage,
+      coverImage: coverImage ?? "",
       rating: ContentRating.MATURE,
       status: ContentStatus.UNKNOWN,
       contentType: ContentType.MANGA,
@@ -679,14 +702,20 @@ export default class Target {
       if (isRemoteArchiveUrl(decoded.value)) {
         const bytes = await fetchBytes(decoded.value, { timeout: 180_000 });
         const { urls } = openArchiveSession(bytes);
-        return urls.map((url) => ({ url }));
+        return urls.map((url) => {
+          const b64 = b64ForPage(url);
+          return b64 ? { b64 } : { url };
+        });
       }
       return pagesForChapterUrl(decoded.value);
     }
 
     const bytes = await getObjectBytes(config, decoded.value);
     const { urls } = openArchiveSession(bytes);
-    return urls.map((url) => ({ url }));
+    return urls.map((url) => {
+      const b64 = b64ForPage(url);
+      return b64 ? { b64 } : { url };
+    });
   };
 
   /**

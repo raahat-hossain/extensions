@@ -2,16 +2,15 @@ import type { R2Config } from "./config";
 import {
   basename,
   chapterNameMatches,
-  extractArchivePageDataUrl,
-  findArchiveByChapterName,
   isImageName,
   parseChapterPageRef,
   type ChapterPageRef,
 } from "./archive";
+import { isCloudflareError } from "../_shared/cloudflare";
 import { imageUrlsOf, pagesForChapterUrl } from "./gallery";
 import type { DetailsFile } from "./details";
 import { listImageKeys } from "./pages";
-import { getObjectBytes, imageUrl, listAll } from "./r2";
+import { imageUrl, listAll } from "./r2";
 
 export type CoverArchive = {
   key: string;
@@ -35,10 +34,6 @@ export type CoverSpec =
 
 const coverCache = new Map<string, string>();
 
-/** Tiny neutral PNG so list tiles always have a coverImage. */
-export const PLACEHOLDER_COVER =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAPElEQVR42mNgYGD4z8DAwMDAyMjI8N/RhD4z8DIyAhlwBRABRkZGf6D5MEKYJJwBTA+AFjpAwB+1Qn6nY5qAAAAAABJRU5ErkJggg==";
-
 const pickImage = (keys: string[], page: string): string | undefined => {
   if (/^\d+$/.test(page)) return keys[Number(page) - 1];
   const target = page.toLowerCase();
@@ -50,6 +45,10 @@ const pickImage = (keys: string[], page: string): string | undefined => {
     );
   });
 };
+
+/** Suwatte loads coverImage via file APIs — `data:` URLs with `/` in base64 crash. */
+export const isUsableCoverUrl = (url: string): boolean =>
+  /^https?:\/\//i.test(url.trim());
 
 export const relativeCoverKey = (
   cover: string,
@@ -103,8 +102,7 @@ const resolveCoverRef = async (options: {
   remotes: CoverRemote[];
   allowArchiveExtract: boolean;
 }): Promise<string | undefined> => {
-  const { config, ref, archives, folders, remotes, allowArchiveExtract } =
-    options;
+  const { config, ref, folders, remotes } = options;
 
   const folder = folders.find((entry) =>
     chapterNameMatches(entry.name, ref.chapter),
@@ -116,28 +114,17 @@ const resolveCoverRef = async (options: {
     if (key) return imageUrl(config, key, 60 * 60);
   }
 
-  if (allowArchiveExtract) {
-    const archive = findArchiveByChapterName(archives, ref.chapter);
-    if (archive) {
-      try {
-        const bytes = await getObjectBytes(config, archive.key);
-        return extractArchivePageDataUrl(bytes, ref.page);
-      } catch {
-        // try gallery chapters next
-      }
-    }
-  }
-
+  // Zip pages are in-memory bytes. Suwatte cannot load data: URLs as covers.
   const remote = remotes.find((entry) =>
     chapterNameMatches(entry.name, ref.chapter),
   );
   if (remote) {
     try {
       const pages = await pagesForChapterUrl(remote.url);
-      const urls = imageUrlsOf(pages);
+      const urls = imageUrlsOf(pages).filter(isUsableCoverUrl);
       return pickImage(urls, ref.page);
-    } catch {
-      // leave cover spec uncached so the next open can retry (CF, etc.)
+    } catch (error) {
+      if (isCloudflareError(error)) throw error;
     }
   }
 
@@ -146,11 +133,11 @@ const resolveCoverRef = async (options: {
 
 /**
  * Resolve a title cover, matching Mihon:
- * 1. details.cover (absolute / data / `Chapter 1_1` / relative image)
+ * 1. details.cover (https / `Chapter 1_1` / relative image)
  * 2. cover.(png|jpg|…) object in the folder
- * 3. first folder page, then first zip page
+ * 3. first folder page
  *
- * A failed cover spec is not cached — retry next open.
+ * Never returns `data:` URLs (Suwatte treats them as file paths).
  */
 export const resolveCoverImage = async (options: {
   config: R2Config;
@@ -162,7 +149,6 @@ export const resolveCoverImage = async (options: {
   folders?: CoverFolder[];
   remotes?: CoverRemote[];
   allowArchiveExtract?: boolean;
-  fallbackToPlaceholder?: boolean;
 }): Promise<string | undefined> => {
   const {
     config,
@@ -174,7 +160,6 @@ export const resolveCoverImage = async (options: {
     folders = [],
     remotes = [],
     allowArchiveExtract = true,
-    fallbackToPlaceholder = false,
   } = options;
 
   const coverValue = details?.cover?.trim() || undefined;
@@ -185,9 +170,11 @@ export const resolveCoverImage = async (options: {
   if (coverValue) {
     const spec = classifyCoverSpec(coverValue, seriesPrefix);
     let resolved: string | undefined;
-    if (spec?.kind === "direct") resolved = spec.value;
-    else if (spec?.kind === "key") resolved = imageUrl(config, spec.key, 60 * 60);
-    else if (spec?.kind === "ref") {
+    if (spec?.kind === "direct") {
+      resolved = isUsableCoverUrl(spec.value) ? spec.value : undefined;
+    } else if (spec?.kind === "key") {
+      resolved = imageUrl(config, spec.key, 60 * 60);
+    } else if (spec?.kind === "ref") {
       resolved = await resolveCoverRef({
         config,
         ref: spec.ref,
@@ -197,53 +184,31 @@ export const resolveCoverImage = async (options: {
         allowArchiveExtract,
       });
     }
-    if (resolved) {
+    if (resolved && isUsableCoverUrl(resolved)) {
       coverCache.set(cacheKey, resolved);
       return resolved;
     }
   }
 
-  const fallback = async (): Promise<string | undefined> => {
-    if (coverKey) return imageUrl(config, coverKey, 60 * 60);
+  if (coverKey) {
+    const url = imageUrl(config, coverKey, 60 * 60);
+    if (!coverValue) coverCache.set(cacheKey, url);
+    return url;
+  }
 
-    if (folders[0]) {
-      try {
-        const listed = await listAll(config, folders[0].prefix);
-        const key = listImageKeys(listed.objects.map((object) => object.key))[0];
-        if (key) return imageUrl(config, key, 60 * 60);
-      } catch {
-        // ignore
+  if (folders[0]) {
+    try {
+      const listed = await listAll(config, folders[0].prefix);
+      const key = listImageKeys(listed.objects.map((object) => object.key))[0];
+      if (key) {
+        const url = imageUrl(config, key, 60 * 60);
+        if (!coverValue) coverCache.set(cacheKey, url);
+        return url;
       }
+    } catch {
+      // ignore
     }
+  }
 
-    if (allowArchiveExtract && archives[0]) {
-      try {
-        const bytes = await getObjectBytes(config, archives[0].key);
-        for (const guess of [
-          "1",
-          "1.png",
-          "01.png",
-          "001.png",
-          "1.jpg",
-          "01.jpg",
-          "cover.png",
-        ]) {
-          try {
-            return extractArchivePageDataUrl(bytes, guess);
-          } catch {
-            // try next guess
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    return fallbackToPlaceholder ? PLACEHOLDER_COVER : undefined;
-  };
-
-  const url = await fallback();
-  // Don't pin a fallback while a cover ref is set — retry until the chapter resolves.
-  if (url && !coverValue) coverCache.set(cacheKey, url);
-  return url;
+  return undefined;
 };

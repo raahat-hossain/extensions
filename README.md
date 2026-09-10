@@ -30,7 +30,7 @@ Suwatte source list (directory URL, not `runners.json`):
 https://raahat-hossain.github.io/extensions/suwatte
 ```
 
-R2 Library on Suwatte is **1.7** (same `details.json` chapters[] / gallery mix as the Mihon APK). Update the list in-app after adding.
+R2 Library on Suwatte is **1.8** (same `details.json` chapters[] / gallery mix as the Mihon APK; `details.cover` wins over `cover.webp`). Update the list in-app after adding.
 
 ```json
 {

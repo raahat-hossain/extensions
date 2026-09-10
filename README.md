@@ -20,6 +20,12 @@ Each folder under the root prefix is a title. Mix any of: image folders, `.cbz`/
 
 Generator (details + chapters): [`web/index.html`](web/index.html)
 
+On iPhone, open:
+
+```
+https://cdn.jsdelivr.net/gh/raahat-hossain/extensions@cursor/r2-merge-extension-8f4a/web/index.html
+```
+
 ```json
 {
   "title": "Example",

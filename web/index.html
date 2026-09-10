@@ -239,7 +239,11 @@
   </section>
 
   <section>
-    <h2>Preview</h2>
+    <div class="chapter-head" style="margin-bottom:10px">
+      <h2 style="margin:0">Preview</h2>
+      <span class="grow"></span>
+      <button class="ghost" type="button" id="copyBtn">Copy JSON</button>
+    </div>
     <pre id="preview"></pre>
   </section>
 
@@ -484,6 +488,16 @@
       fields.cover.value = `${name}_1`;
       updatePreview();
       saveLocal();
+    });
+
+    $("copyBtn").addEventListener("click", async () => {
+      const text = jsonText(buildDetails(false));
+      try {
+        await navigator.clipboard.writeText(text);
+        toast("Copied details.json");
+      } catch {
+        toast("Copy failed");
+      }
     });
 
     $("shareCombined").addEventListener("click", () => {

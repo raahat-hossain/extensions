@@ -22,7 +22,7 @@ JSON generator:
 
 **[https://raahat-hossain.github.io/extensions/](https://raahat-hossain.github.io/extensions/)**
 
-Source: [`web/index.html`](web/index.html). If that 404s, enable Pages once: [Settings → Pages](https://github.com/raahat-hossain/extensions/settings/pages) → Source: **GitHub Actions**, then re-run **Deploy JSON generator**.
+Source: [`web/index.html`](web/index.html).
 
 ```json
 {

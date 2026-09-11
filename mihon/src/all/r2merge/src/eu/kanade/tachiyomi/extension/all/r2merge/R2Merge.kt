@@ -409,16 +409,23 @@ class R2Merge(
         config: R2Config,
         listing: S3Listing,
         seriesPrefix: String,
-    ): List<ParsedChapter> {
+    ): JsonChapterListing {
         val direct = listing.objects.filter { it.key.isChildOf(seriesPrefix) }
         val chapters = mutableListOf<ParsedChapter>()
+        var overlay = false
         direct.firstOrNull { it.key.fileName().equals("details.json", true) }?.let { obj ->
-            fetchText(config, obj)?.let { chapters += parseChaptersJson(it, json, seriesPrefix) }
+            fetchText(config, obj)?.let { body ->
+                overlay = overlay || overlayFlag(body, json)
+                chapters += parseChaptersJson(body, json, seriesPrefix)
+            }
         }
         direct.firstOrNull { isChaptersJson(it.key) }?.let { obj ->
-            fetchText(config, obj)?.let { chapters += parseChaptersJson(it, json, seriesPrefix) }
+            fetchText(config, obj)?.let { body ->
+                overlay = overlay || overlayFlag(body, json)
+                chapters += parseChaptersJson(body, json, seriesPrefix)
+            }
         }
-        return chapters
+        return JsonChapterListing(overlay = overlay, chapters = chapters)
     }
 
     private fun chaptersJsonCoverPage(
@@ -427,7 +434,7 @@ class R2Merge(
         listing: S3Listing,
         ref: CoverPageRef,
     ): String? {
-        val chapters = jsonListedChapters(config, listing, seriesPrefix)
+        val chapters = jsonListedChapters(config, listing, seriesPrefix).chapters
         val chapter = findChapterByName(chapters, ref.chapter) { it.title } ?: return null
         val pages = pagesForCover(chapter.url)
         val imageUrl = pickCoverPage(pages, ref.page, preserveOrder = true) { it.imageUrl.orEmpty() }
@@ -542,9 +549,14 @@ class R2Merge(
             )
         }
 
-        chapters += jsonListedChapters(config, tree, prefix)
+        val listed = jsonListedChapters(config, tree, prefix)
+        val merged = if (listed.overlay) {
+            mergeChapterLists(chapters, listed.chapters)
+        } else {
+            (chapters + listed.chapters).distinctBy { it.url }
+        }
 
-        if (chapters.isEmpty()) {
+        if (merged.isEmpty()) {
             throw IOException(
                 emptySeriesMessage(
                     seriesName,
@@ -554,8 +566,7 @@ class R2Merge(
             )
         }
 
-        chapters
-            .distinctBy { it.url }
+        merged
             .sortedWith(compareBy<ParsedChapter> { it.number }.thenBy(NaturalOrder) { it.title })
             .map { chapter ->
                 SChapter.create().apply {

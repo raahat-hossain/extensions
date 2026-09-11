@@ -17,6 +17,31 @@ Manga/                          # folder name = content id
 
 Array, or `{ "chapters": [ ... ] }`. Can also live inside `details.json` as `"chapters": [ ... ]` (preferred — one file). Merged with zip/folder chapters already in the series.
 
+Set `"chaptersOverlay": true` on `details.json` (or `"overlay": true` on `chapters.json`) to **replace by number** instead of always appending:
+
+- Series already has folder/cbz chapters 1–5
+- JSON `{ "number": 4, "url": "https://…" }` replaces chapter 4
+- JSON `{ "number": 6, … }` and `{ "number": 7, … }` append
+- Without the flag, JSON chapters are only appended (same-number folders still show)
+
+```json
+{
+  "chaptersOverlay": true,
+  "chapters": [
+    {
+      "title": "Chapter 4",
+      "number": 4,
+      "url": "https://nhentai.net/g/289857/"
+    },
+    {
+      "title": "Chapter 6",
+      "number": 6,
+      "url": "https://hitomi.la/galleries/123456.html"
+    }
+  ]
+}
+```
+
 ```json
 {
   "chapters": [
@@ -45,7 +70,8 @@ Array, or `{ "chapters": [ ... ] }`. Can also live inside `details.json` as `"ch
 | `url` / `href` / `link` / `archive` / `file` | Gallery page, remote `.cbz`/`.zip`, or a path relative to the series folder |
 | `source` / `site` / `host` | Optional: `nhentai`, `hentairead`, `hentainexus`, `hentai2read`, `pandachaika`, `ehentai`, `hitomi` (aliases: `nh`, `hr`, `hn`, `h2r`, `chaika`, `eh`, `exhentai`). `zip`/`cbz` forces archive handling |
 | `id` | Gallery/slug id if you skip the URL (`id` + `source`) |
-| `title` / `number` / `date` / `scanlator` | Optional display fields |
+| `title` / `number` / `date` / `scanlator` | Optional display fields. With overlay, `number` is the replace/append key |
+| `chaptersOverlay` / `overlay` | On the file root (not per chapter). `true` = replace matching numbers, append the rest |
 | `pages` | Raw image URLs — skips site/archive parsing |
 
 ### Gallery hosts

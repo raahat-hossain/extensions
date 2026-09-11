@@ -4,6 +4,7 @@ import android.util.Base64
 import eu.kanade.tachiyomi.extension.all.r2merge.util.chapterNumberOf
 import eu.kanade.tachiyomi.extension.all.r2merge.util.fileName
 import eu.kanade.tachiyomi.extension.all.r2merge.util.isArchiveKey
+import eu.kanade.tachiyomi.extension.all.r2merge.util.overlayChapterNumber
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -18,7 +19,59 @@ internal class ParsedChapter(
     val url: String,
     val scanlator: String? = null,
     val dateUpload: Long = 0L,
+    /** JSON `number` or a `Chapter N` title — safe to replace a folder/cbz with this number. */
+    val explicitNumber: Boolean = false,
 )
+
+internal class JsonChapterListing(
+    val overlay: Boolean,
+    val chapters: List<ParsedChapter>,
+)
+
+/**
+ * JSON chapters with an explicit number replace every bucket chapter that already
+ * uses that number; any other JSON chapter is appended. URL fingerprints still
+ * drop exact duplicates. Without [overlay], callers should concat + distinctBy url.
+ */
+internal fun mergeChapterLists(
+    base: List<ParsedChapter>,
+    overlay: List<ParsedChapter>,
+): List<ParsedChapter> {
+    val merged = base.toMutableList()
+    val seen = merged.map { it.url }.toMutableSet()
+    for (chapter in overlay) {
+        val replace = chapter.explicitNumber && chapter.number > 0f
+        if (replace) {
+            val targets = merged.indices.filter { merged[it].number == chapter.number }
+            if (targets.isNotEmpty()) {
+                val keep = targets.first()
+                for (index in targets.asReversed()) {
+                    seen.remove(merged[index].url)
+                    if (index == keep) {
+                        merged[index] = chapter
+                        seen += chapter.url
+                    } else {
+                        merged.removeAt(index)
+                    }
+                }
+                continue
+            }
+        }
+        if (chapter.url in seen) continue
+        merged += chapter
+        seen += chapter.url
+    }
+    return merged
+}
+
+internal fun overlayFlag(body: String, json: Json): Boolean {
+    val parsed = runCatching {
+        json.parseToJsonElement(body.trim().removePrefix("\uFEFF"))
+    }.getOrNull() as? JsonObject ?: return false
+    return listOf("chaptersOverlay", "overlay").any { key ->
+        (parsed[key] as? JsonPrimitive)?.contentOrNull.equals("true", true)
+    }
+}
 
 /**
  * Gallery URL, remote/local archive, folder, id+source, or explicit page list.
@@ -97,7 +150,11 @@ internal fun parseChaptersJson(
         }
 
         val display = title.ifBlank { displayFallback }
-        val number = (obj?.get("number") as? JsonPrimitive)?.contentOrNull?.toFloatOrNull()
+        val jsonNumber = (obj?.get("number") as? JsonPrimitive)?.contentOrNull?.toFloatOrNull()
+        val titleNumber = overlayChapterNumber(display)
+        val explicitNumber = jsonNumber != null || titleNumber != null
+        val number = jsonNumber
+            ?: titleNumber
             ?: chapterNumberOf(display).takeIf { it >= 0f }
             ?: (index + 1).toFloat()
         val date = listOf("date", "date_upload").firstNotNullOfOrNull {
@@ -113,6 +170,7 @@ internal fun parseChaptersJson(
             url = chapterUrl,
             scanlator = scanlator,
             dateUpload = date,
+            explicitNumber = explicitNumber,
         )
     }
 }

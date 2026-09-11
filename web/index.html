@@ -112,6 +112,33 @@
       font-weight: 700;
       flex: none;
     }
+    .ch-num {
+      width: 64px;
+      flex: none;
+      text-align: center;
+      padding: 10px 6px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      color: var(--accent-2);
+      background: #2a2344;
+    }
+    input.ch-num::-webkit-outer-spin-button,
+    input.ch-num::-webkit-inner-spin-button { appearance: none; margin: 0; }
+    input.ch-num[type=number] { appearance: textfield; }
+    .check-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .check-row input[type=checkbox] {
+      width: 20px;
+      height: 20px;
+      margin: 2px 0 0;
+      accent-color: var(--accent);
+      flex: none;
+    }
+    .check-row span { color: var(--text); font-size: 0.92rem; }
     .chapter .grow { flex: 1; }
     .icon-btn {
       width: 36px;
@@ -237,12 +264,26 @@
 
   <section>
     <h2>Chapters</h2>
+    <div class="row">
+      <div>
+        <label for="existingCount">Already in R2</label>
+        <input id="existingCount" type="number" min="0" step="1" value="0" />
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <label class="check-row" style="margin-top:0">
+          <input id="overlay" type="checkbox" checked />
+          <span>Overlay by number</span>
+        </label>
+      </div>
+    </div>
+    <p class="hint">Folder/cbz chapters already in the series stay. Same <code>number</code> replaces that chapter (e.g. swap ch.4). Higher numbers append (6, 7 after 5). MangaDex/NovelCrow page URLs are not readable — use a gallery / cbz / folder URL.</p>
     <div id="chapters"></div>
     <div class="add-row">
       <button class="add" type="button" id="addBtn">+ Chapter</button>
       <button class="ghost" type="button" id="pasteBtn">Paste links</button>
     </div>
-    <p class="hint">Blank name becomes <code>Chapter 1</code>, <code>Chapter 2</code>, … Folder/cbz chapters already in R2 are picked up automatically — only add gallery / extra URLs here.</p>
+    <p class="hint">Blank name becomes <code>Chapter N</code>. Turn overlay off only if you want JSON chapters listed <em>in addition to</em> the same-numbered folder/cbz.</p>
   </section>
 
   <section>
@@ -354,29 +395,20 @@
       if (series) fields.title.value = series;
     };
 
-    const chapterFromPaste = (item) => ({
-      url: item.url,
-      title: looksLikeChapterTitle(item.title) ? item.title : "",
-    });
+    const numberFromTitle = (title) => {
+      const match = String(title || "").match(
+        /\b(?:ch(?:apter)?|ep(?:isode)?|#)[\s._-]*(\d+(?:\.\d+)?)/i,
+      );
+      return match ? Number(match[1]) : 0;
+    };
 
-    const applyPasteToChapter = (idx, text) => {
-      const items = extractChapterPastes(text);
-      if (!items.length) {
-        chapters[idx].url = String(text || "").trim();
-        renderChapters();
-        return;
-      }
-      maybeFillSeriesTitle(items);
-      const next = chapterFromPaste(items[0]);
-      chapters[idx] = {
-        url: next.url,
-        title: chapters[idx].title.trim() || next.title,
+    const chapterFromPaste = (item) => {
+      const title = looksLikeChapterTitle(item.title) ? item.title : "";
+      return {
+        url: item.url,
+        title,
+        number: numberFromTitle(item.title) || 0,
       };
-      items.slice(1).forEach((item, offset) => {
-        chapters.splice(idx + 1 + offset, 0, chapterFromPaste(item));
-      });
-      renderChapters();
-      document.querySelector(`.ch-url[data-i="${idx}"]`)?.focus();
     };
 
     const fields = {
@@ -389,9 +421,66 @@
       cover: $("cover"),
     };
 
-    let chapters = [{ url: "", title: "" }];
+    const existingCountEl = $("existingCount");
+    const overlayEl = $("overlay");
 
-    const defaultTitle = (i) => `Chapter ${i + 1}`;
+    const asNumber = (value) => {
+      const n = Number(value);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+
+    const existingCount = () => asNumber(existingCountEl.value);
+
+    const chapterNumber = (ch) => asNumber(ch?.number);
+
+    const maxChapterNumber = () => Math.max(
+      existingCount(),
+      0,
+      ...chapters.map((ch) => chapterNumber(ch)),
+    );
+
+    const nextNumber = () => maxChapterNumber() + 1;
+
+    const emptyChapter = (partial = {}) => ({
+      url: partial.url || "",
+      title: partial.title || "",
+      number: asNumber(partial.number) || nextNumber(),
+    });
+
+    const withNumber = (ch) => ({
+      url: ch.url || "",
+      title: ch.title || "",
+      number: asNumber(ch.number) || nextNumber(),
+    });
+
+    let chapters = [{ url: "", title: "", number: 1 }];
+
+    const defaultTitle = (ch, i) => `Chapter ${chapterNumber(ch) || i + 1}`;
+
+    const applyPasteToChapter = (idx, text) => {
+      const items = extractChapterPastes(text);
+      if (!items.length) {
+        chapters[idx].url = String(text || "").trim();
+        renderChapters();
+        return;
+      }
+      maybeFillSeriesTitle(items);
+      const first = chapterFromPaste(items[0]);
+      chapters[idx] = {
+        url: first.url,
+        title: String(chapters[idx].title || "").trim() || first.title,
+        number: chapterNumber(chapters[idx]) || asNumber(first.number) || nextNumber(),
+      };
+      let cursor = Math.max(chapterNumber(chapters[idx]), maxChapterNumber());
+      items.slice(1).forEach((item, offset) => {
+        const extra = chapterFromPaste(item);
+        extra.number = asNumber(extra.number) || (cursor + 1);
+        cursor = extra.number;
+        chapters.splice(idx + 1 + offset, 0, extra);
+      });
+      renderChapters();
+      document.querySelector(`.ch-url[data-i="${idx}"]`)?.focus();
+    };
 
     const readForm = () => ({
       title: fields.title.value.trim(),
@@ -401,9 +490,10 @@
       genre: fields.genre.value.split(",").map((s) => s.trim()).filter(Boolean),
       status: fields.status.value,
       cover: fields.cover.value.trim(),
+      overlay: overlayEl.checked,
       chapters: chapters.map((ch, i) => ({
-        title: ch.title.trim() || defaultTitle(i),
-        number: i + 1,
+        title: ch.title.trim() || defaultTitle(ch, i),
+        number: chapterNumber(ch) || i + 1,
         url: ch.url.trim(),
       })).filter((ch) => ch.url),
     });
@@ -418,11 +508,16 @@
       if (data.genre.length) details.genre = data.genre;
       if (data.status && data.status !== "unknown") details.status = data.status;
       if (data.cover) details.cover = data.cover;
+      if (data.overlay) details.chaptersOverlay = true;
       if (!split) details.chapters = data.chapters;
       return details;
     };
 
-    const buildChaptersFile = () => ({ chapters: readForm().chapters });
+    const buildChaptersFile = () => {
+      const file = { chapters: readForm().chapters };
+      if (overlayEl.checked) file.overlay = true;
+      return file;
+    };
 
     const jsonText = (obj) => `${JSON.stringify(obj, null, 2)}\n`;
 
@@ -430,13 +525,13 @@
       $("chapters").innerHTML = chapters.map((ch, i) => `
         <div class="chapter" data-i="${i}">
           <div class="chapter-head">
-            <div class="idx">${i + 1}</div>
+            <input class="ch-num" data-i="${i}" type="number" min="0" step="any" inputmode="decimal" value="${chapterNumber(ch) || ""}" />
             <input class="grow ch-url" data-i="${i}" placeholder="https://…  or  Chapter 001.cbz" value="${escapeAttr(ch.url)}" />
             <button class="icon-btn" type="button" data-up="${i}" ${i === 0 ? "disabled" : ""}>↑</button>
             <button class="icon-btn" type="button" data-down="${i}" ${i === chapters.length - 1 ? "disabled" : ""}>↓</button>
             <button class="icon-btn danger" type="button" data-del="${i}">✕</button>
           </div>
-          <input class="ch-title" data-i="${i}" placeholder="${defaultTitle(i)} (optional name)" value="${escapeAttr(ch.title)}" />
+          <input class="ch-title" data-i="${i}" placeholder="${defaultTitle(ch, i)} (optional name)" value="${escapeAttr(ch.title)}" />
         </div>
       `).join("");
       updatePreview();
@@ -463,6 +558,8 @@
     const saveLocal = () => {
       localStorage.setItem(STORAGE, JSON.stringify({
         ...Object.fromEntries(Object.entries(fields).map(([k, el]) => [k, el.value])),
+        existingCount: existingCountEl.value,
+        overlay: overlayEl.checked,
         chapters,
       }));
     };
@@ -474,7 +571,15 @@
         Object.entries(fields).forEach(([k, el]) => {
           if (raw[k] != null) el.value = raw[k];
         });
-        if (Array.isArray(raw.chapters) && raw.chapters.length) chapters = raw.chapters;
+        if (raw.existingCount != null) existingCountEl.value = raw.existingCount;
+        if (typeof raw.overlay === "boolean") overlayEl.checked = raw.overlay;
+        if (Array.isArray(raw.chapters) && raw.chapters.length) {
+          chapters = raw.chapters.map((ch, i) => ({
+            url: ch.url || "",
+            title: ch.title || "",
+            number: asNumber(ch.number) || i + 1,
+          }));
+        }
       } catch { /* ignore */ }
     };
 
@@ -512,6 +617,16 @@
       }).filter(Boolean).join(", ");
     };
 
+    const importedChapter = (entry, fallbackNumber) => {
+      if (typeof entry === "string") return { url: entry, title: "", number: fallbackNumber };
+      const title = entry.title || entry.name || "";
+      return {
+        url: entry.url || entry.href || entry.link || entry.archive || "",
+        title,
+        number: asNumber(entry.number) || numberFromTitle(title) || fallbackNumber,
+      };
+    };
+
     const importObject = (obj) => {
       if (!obj || typeof obj !== "object") return;
       if (obj.title) fields.title.value = obj.title;
@@ -522,16 +637,26 @@
       if (g) fields.genre.value = g;
       if (obj.status) fields.status.value = String(obj.status).toLowerCase();
       if (obj.cover) fields.cover.value = obj.cover;
+      if (obj.chaptersOverlay === true || obj.overlay === true) overlayEl.checked = true;
+      if (obj.chaptersOverlay === false || obj.overlay === false) overlayEl.checked = false;
       const list = Array.isArray(obj) ? obj : (obj.chapters || obj.chapter_list);
-      if (Array.isArray(list) && list.length) {
-        chapters = list.map((entry) => {
-          if (typeof entry === "string") return { url: entry, title: "" };
-          return {
-            url: entry.url || entry.href || entry.link || entry.archive || "",
-            title: entry.title || entry.name || "",
-          };
-        });
+      if (!Array.isArray(list) || !list.length) return;
+      const occupied = chapters.some((ch) => ch.url.trim() || ch.title.trim());
+      const incoming = list.map((entry, i) => importedChapter(entry, i + 1));
+      if (!occupied) {
+        chapters = incoming;
+        return;
       }
+      incoming.forEach((ch) => {
+        const idx = ch.number
+          ? chapters.findIndex((row) => chapterNumber(row) === ch.number)
+          : -1;
+        if (idx >= 0) {
+          chapters[idx] = { ...chapters[idx], ...ch };
+        } else {
+          chapters.push(withNumber(ch));
+        }
+      });
     };
 
     $("chapters").addEventListener("input", (e) => {
@@ -545,6 +670,7 @@
         chapters[i].url = e.target.value;
       }
       if (e.target.classList.contains("ch-title")) chapters[i].title = e.target.value;
+      if (e.target.classList.contains("ch-num")) chapters[i].number = asNumber(e.target.value);
       updatePreview();
       saveLocal();
     });
@@ -572,7 +698,7 @@
       const down = e.target.dataset.down;
       if (del != null) {
         if (chapters.length === 1) {
-          chapters = [{ url: "", title: "" }];
+          chapters = [emptyChapter({ number: existingCount() + 1 })];
         } else {
           chapters.splice(Number(del), 1);
         }
@@ -593,9 +719,19 @@
     Object.values(fields).forEach((el) => {
       el.addEventListener("input", () => { updatePreview(); saveLocal(); });
     });
+    existingCountEl.addEventListener("input", () => {
+      if (chapters.length === 1 && !chapters[0].url.trim() && !chapters[0].title.trim()) {
+        chapters[0].number = existingCount() + 1;
+        renderChapters();
+        return;
+      }
+      updatePreview();
+      saveLocal();
+    });
+    overlayEl.addEventListener("change", () => { updatePreview(); saveLocal(); });
 
     $("addBtn").addEventListener("click", () => {
-      chapters.push({ url: "", title: "" });
+      chapters.push(emptyChapter());
       renderChapters();
     });
 
@@ -605,8 +741,13 @@
       const items = extractChapterPastes($("pasteArea").value);
       if (!items.length) { toast("No links found"); return; }
       maybeFillSeriesTitle(items);
-      const next = items.map(chapterFromPaste);
       const empty = chapters.length === 1 && !chapters[0].url && !chapters[0].title;
+      const start = empty ? existingCount() + 1 : nextNumber();
+      const next = items.map((item, i) => {
+        const ch = chapterFromPaste(item);
+        ch.number = asNumber(ch.number) || (start + i);
+        return ch;
+      });
       chapters = empty ? next : chapters.concat(next);
       $("pasteArea").value = "";
       $("pasteDialog").close();
@@ -615,7 +756,7 @@
 
     $("coverFromFirst").addEventListener("click", () => {
       const data = readForm();
-      const name = data.chapters[0]?.title || defaultTitle(0);
+      const name = data.chapters[0]?.title || defaultTitle(chapters[0], 0);
       fields.cover.value = `${name}_1`;
       updatePreview();
       saveLocal();
@@ -669,7 +810,9 @@
 
     $("clearBtn").addEventListener("click", () => {
       Object.values(fields).forEach((el) => { el.value = el.tagName === "SELECT" ? "ongoing" : ""; });
-      chapters = [{ url: "", title: "" }];
+      existingCountEl.value = "0";
+      overlayEl.checked = true;
+      chapters = [{ url: "", title: "", number: 1 }];
       localStorage.removeItem(STORAGE);
       renderChapters();
     });

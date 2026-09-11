@@ -88,6 +88,16 @@ private val STANDALONE_NUMBER = Regex("""(?:^|[\s._\-\[(])(\d+(?:\.\d+)?)(?=$|[\
 private val ANY_NUMBER = Regex("""(\d+(?:\.\d+)?)""")
 
 /**
+ * Chapter number taken only from `Chapter 4` / `Ch.4` / `Ep 4` style tokens.
+ * Used as the overlay key so gallery ids like `nhentai 289857` are not treated
+ * as "replace chapter 289857".
+ */
+fun overlayChapterNumber(rawName: String): Float? {
+    val name = rawName.trimEnd('/').substringAfterLast('/')
+    return CHAPTER_TOKEN.find(name)?.groupValues?.get(1)?.toFloatOrNull()
+}
+
+/**
  * Best-effort chapter number for a folder or archive name. Returns -1 when the
  * name carries no number at all, which the app treats as "unknown".
  */

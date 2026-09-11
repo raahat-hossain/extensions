@@ -21,7 +21,8 @@ private val SERIES_PATH = Regex(
 
 internal fun isNovelCrowSeriesUrl(url: String): Boolean = SERIES_PATH.containsMatchIn(url.trim())
 
-internal fun isRemoteSeriesUrl(url: String): Boolean = isNovelCrowSeriesUrl(url)
+internal fun isRemoteSeriesUrl(url: String): Boolean =
+    isNovelCrowSeriesUrl(url) || isMangaDexSeriesUrl(url)
 
 internal fun parseMadaraChapterList(html: String, baseUrl: String): List<ParsedChapter> {
     val document = Jsoup.parse(html, baseUrl)

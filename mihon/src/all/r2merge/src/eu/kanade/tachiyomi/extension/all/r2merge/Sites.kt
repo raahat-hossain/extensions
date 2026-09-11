@@ -9,6 +9,7 @@ internal enum class SiteId {
     EHentai,
     Hitomi,
     NovelCrow,
+    MangaDex,
     ;
 
     fun label(): String = when (this) {
@@ -20,6 +21,7 @@ internal enum class SiteId {
         EHentai -> "ehentai"
         Hitomi -> "hitomi"
         NovelCrow -> "novelcrow"
+        MangaDex -> "mangadex"
     }
 }
 
@@ -48,6 +50,7 @@ internal fun normalizeSite(value: String?): SiteId? {
         "ehentai", "e-hentai", "eh", "exhentai", "ex", "e-hentai.org", "exhentai.org" -> SiteId.EHentai
         "hitomi", "hitomi.la" -> SiteId.Hitomi
         "novelcrow", "nc", "novel-crow", "novelcrow.com" -> SiteId.NovelCrow
+        "mangadex", "md", "manga-dex", "mangadex.org" -> SiteId.MangaDex
         else -> null
     }
 }
@@ -67,6 +70,8 @@ internal fun siteFromHost(host: String): SiteId? {
         h == "hitomi.la" || h.endsWith(".hitomi.la") ||
             h == HITOMI_CDN || h.endsWith(".$HITOMI_CDN") -> SiteId.Hitomi
         h == "novelcrow.com" || h.endsWith(".novelcrow.com") -> SiteId.NovelCrow
+        h == "mangadex.org" || h.endsWith(".mangadex.org") ||
+            h == "mangadex.network" || h.endsWith(".mangadex.network") -> SiteId.MangaDex
         else -> null
     }
 }
@@ -95,7 +100,7 @@ internal fun identifySite(url: String, explicit: String? = null): SiteId {
     throw Exception(
         "Unknown chapter host \"${hostOf(url).ifBlank { url }}\". " +
             "Set source to nhentai, hentairead, hentainexus, hentai2read, " +
-            "pandachaika, ehentai, hitomi, or novelcrow — or use a .cbz/.zip / folder chapter.",
+            "pandachaika, ehentai, hitomi, novelcrow, or mangadex — or use a .cbz/.zip / folder chapter.",
     )
 }
 
@@ -156,6 +161,7 @@ internal fun extractRemoteId(site: SiteId, url: String): String {
                 .trim('/')
             path.ifBlank { throw Exception("Could not parse novelcrow path from $trimmed") }
         }
+        SiteId.MangaDex -> mangaDexIdFromUrl(trimmed)
     }
 }
 
@@ -168,6 +174,7 @@ internal fun canonicalUrl(site: SiteId, remoteId: String): String = when (site) 
     SiteId.EHentai -> ehentaiGalleryUrl(remoteId, EHENTAI_BASE)
     SiteId.Hitomi -> "$HITOMI_BASE/galleries/$remoteId.html"
     SiteId.NovelCrow -> "$NOVELCROW_BASE/${remoteId.trimStart('/')}/"
+    SiteId.MangaDex -> "$MANGADEX_SITE/chapter/$remoteId"
 }
 
 internal fun refererForImage(url: String): String? = when (siteFromHost(hostOf(url))) {
@@ -182,6 +189,7 @@ internal fun refererForImage(url: String): String? = when (siteFromHost(hostOf(u
     }
     SiteId.Hitomi -> "$HITOMI_BASE/"
     SiteId.NovelCrow -> "$NOVELCROW_BASE/"
+    SiteId.MangaDex -> "$MANGADEX_SITE/"
     null -> null
 }
 
@@ -214,6 +222,7 @@ internal fun pageListUrl(site: SiteId, remoteId: String, originalUrl: String): S
         val path = originalUrl.trim().substringBefore('?').trimEnd('/')
         if (path.isNotEmpty()) "$path/" else "$NOVELCROW_BASE/${remoteId.trimStart('/')}/"
     }
+    SiteId.MangaDex -> "$MANGADEX_API/at-home/server/$remoteId"
 }
 
 internal fun siteReferer(site: SiteId): String = when (site) {
@@ -225,6 +234,7 @@ internal fun siteReferer(site: SiteId): String = when (site) {
     SiteId.EHentai -> "$EHENTAI_BASE/"
     SiteId.Hitomi -> "$HITOMI_BASE/"
     SiteId.NovelCrow -> "$NOVELCROW_BASE/"
+    SiteId.MangaDex -> "$MANGADEX_SITE/"
 }
 
 internal fun ehentaiGalleryUrl(remoteId: String, origin: String): String {

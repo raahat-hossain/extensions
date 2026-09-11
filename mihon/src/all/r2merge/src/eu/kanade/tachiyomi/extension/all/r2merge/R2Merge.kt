@@ -429,10 +429,10 @@ class R2Merge(
     }
 
     private fun expandRemoteSeries(chapters: List<ParsedChapter>): List<ParsedChapter> = chapters.flatMap { chapter ->
-        if (isRemoteSeriesUrl(chapter.url)) {
-            fetchNovelCrowChapters(client, headers, chapter.url)
-        } else {
-            listOf(chapter)
+        when {
+            isNovelCrowSeriesUrl(chapter.url) -> fetchNovelCrowChapters(client, headers, chapter.url)
+            isMangaDexSeriesUrl(chapter.url) -> fetchMangaDexChapters(client, headers, chapter.url, json)
+            else -> listOf(chapter)
         }
     }
 
@@ -613,10 +613,16 @@ class R2Merge(
             throw Exception("Static page chapters must be opened through fetchPageList")
         }
         val site = identifySite(url)
+        if (site == SiteId.MangaDex && isMangaDexSeriesUrl(url)) {
+            throw Exception("MangaDex title URLs expand when you refresh the chapter list.")
+        }
         val remoteId = extractRemoteId(site, url)
         val target = pageListUrl(site, remoteId, url)
         val builder = headers.newBuilder().set("Referer", siteReferer(site))
         if (site == SiteId.Hitomi) builder.set("Origin", HITOMI_BASE)
+        if (site == SiteId.MangaDex) {
+            builder.set("User-Agent", MANGADEX_USER_AGENT).set("Accept", "application/json")
+        }
         return GET(target, builder.build())
     }
 
@@ -644,6 +650,7 @@ class R2Merge(
             isEHentaiHost(host) -> parseEhentaiPages(body, requestUrl)
             host.contains(HITOMI_CDN) || host.contains("hitomi.la") -> parseHitomiPages(body)
             host.contains("novelcrow.com") -> parseMadaraPages(body, requestUrl)
+            host.contains("api.mangadex.org") -> parseMangaDexAtHome(body, json, requestUrl)
             else -> throw Exception("Don't know how to parse pages from $host")
         }
     }

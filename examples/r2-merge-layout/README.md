@@ -22,7 +22,7 @@ Set `"chaptersOverlay": true` on `details.json` (or `"overlay": true` on `chapte
 - Series already has folder/cbz chapters 1–5
 - JSON `{ "number": 4, "url": "https://…" }` replaces chapter 4
 - JSON `{ "number": 6, … }` and `{ "number": 7, … }` append
-- A NovelCrow series URL (`https://novelcrow.com/comic/slug/`) expands to all chapters on that comic, then overlay numbers still apply (e.g. add 7–8 from HentaiRead)
+- A NovelCrow series URL (`https://novelcrow.com/comic/slug/`) or MangaDex title URL (`https://mangadex.org/title/{uuid}/…`) expands to all chapters on that title, then overlay numbers still apply (e.g. add 7–8 from HentaiRead)
 
 ```json
 {
@@ -68,7 +68,7 @@ Set `"chaptersOverlay": true` on `details.json` (or `"overlay": true` on `chapte
 | Field | Notes |
 | --- | --- |
 | `url` / `href` / `link` / `archive` / `file` | Gallery page, remote `.cbz`/`.zip`, or a path relative to the series folder |
-| `source` / `site` / `host` | Optional: `nhentai`, `hentairead`, `hentainexus`, `hentai2read`, `pandachaika`, `ehentai`, `hitomi`, `novelcrow` (aliases: `nh`, `hr`, `hn`, `h2r`, `chaika`, `eh`, `exhentai`, `nc`). `zip`/`cbz` forces archive handling |
+| `source` / `site` / `host` | Optional: `nhentai`, `hentairead`, `hentainexus`, `hentai2read`, `pandachaika`, `ehentai`, `hitomi`, `novelcrow`, `mangadex` (aliases: `nh`, `hr`, `hn`, `h2r`, `chaika`, `eh`, `exhentai`, `nc`, `md`). `zip`/`cbz` forces archive handling |
 | `id` | Gallery/slug id if you skip the URL (`id` + `source`) |
 | `title` / `number` / `date` / `scanlator` | Optional display fields. With overlay, `number` is the replace/append key |
 | `chaptersOverlay` / `overlay` | On the file root (not per chapter). `true` = replace matching numbers, append the rest |
@@ -85,6 +85,8 @@ Set `"chaptersOverlay": true` on `details.json` (or `"overlay": true` on `chapte
 - `https://hitomi.la/galleries/<id>.html`
 - `https://novelcrow.com/comic/<slug>/` (series — expands to all chapters)
 - `https://novelcrow.com/comic/<slug>/<chapter>/` (single chapter)
+- `https://mangadex.org/title/<uuid>/` (series — expands; English preferred per chapter number)
+- `https://mangadex.org/chapter/<uuid>` (single chapter)
 
 ### Archives and folders
 

@@ -596,8 +596,9 @@
     const shareOrDownload = async (files) => {
       try {
         if (navigator.canShare?.({ files })) {
-          await navigator.share({ files, title: "R2 Library JSON" });
-          toast("Shared");
+          // Files only — title/text becomes a second share item on Android/iOS.
+          await navigator.share({ files });
+          toast(files.length === 1 ? "Shared details.json" : "Shared both files");
           return;
         }
       } catch (err) {

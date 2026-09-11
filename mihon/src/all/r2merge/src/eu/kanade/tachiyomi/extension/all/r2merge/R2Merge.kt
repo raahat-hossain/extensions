@@ -428,13 +428,21 @@ class R2Merge(
         return JsonChapterListing(overlay = overlay, chapters = chapters)
     }
 
+    private fun expandRemoteSeries(chapters: List<ParsedChapter>): List<ParsedChapter> = chapters.flatMap { chapter ->
+        if (isRemoteSeriesUrl(chapter.url)) {
+            fetchNovelCrowChapters(client, headers, chapter.url)
+        } else {
+            listOf(chapter)
+        }
+    }
+
     private fun chaptersJsonCoverPage(
         config: R2Config,
         seriesPrefix: String,
         listing: S3Listing,
         ref: CoverPageRef,
     ): String? {
-        val chapters = jsonListedChapters(config, listing, seriesPrefix).chapters
+        val chapters = expandRemoteSeries(jsonListedChapters(config, listing, seriesPrefix).chapters)
         val chapter = findChapterByName(chapters, ref.chapter) { it.title } ?: return null
         val pages = pagesForCover(chapter.url)
         val imageUrl = pickCoverPage(pages, ref.page, preserveOrder = true) { it.imageUrl.orEmpty() }
@@ -550,10 +558,11 @@ class R2Merge(
         }
 
         val listed = jsonListedChapters(config, tree, prefix)
+        val extras = expandRemoteSeries(listed.chapters)
         val merged = if (listed.overlay) {
-            mergeChapterLists(chapters, listed.chapters)
+            mergeChapterLists(chapters, extras)
         } else {
-            (chapters + listed.chapters).distinctBy { it.url }
+            (chapters + extras).distinctBy { it.url }
         }
 
         if (merged.isEmpty()) {
@@ -634,6 +643,7 @@ class R2Merge(
             host.contains("panda.chaika.moe") || host.contains("chaika.moe") -> parseChaikaPages(body)
             isEHentaiHost(host) -> parseEhentaiPages(body, requestUrl)
             host.contains(HITOMI_CDN) || host.contains("hitomi.la") -> parseHitomiPages(body)
+            host.contains("novelcrow.com") -> parseMadaraPages(body, requestUrl)
             else -> throw Exception("Don't know how to parse pages from $host")
         }
     }
@@ -697,6 +707,8 @@ class R2Merge(
             }
             page.url.contains("e-hentai.org") || page.url.contains("exhentai.org") ->
                 builder.set("Referer", page.url)
+            page.url.contains("novelcrow.com") || url.contains("novelcrow.com") ->
+                builder.set("Referer", "$NOVELCROW_BASE/")
             else -> refererForImage(url)?.let { builder.set("Referer", it) }
         }
         return GET(url, builder.build())

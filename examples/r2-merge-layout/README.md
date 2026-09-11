@@ -22,7 +22,7 @@ Set `"chaptersOverlay": true` on `details.json` (or `"overlay": true` on `chapte
 - Series already has folder/cbz chapters 1–5
 - JSON `{ "number": 4, "url": "https://…" }` replaces chapter 4
 - JSON `{ "number": 6, … }` and `{ "number": 7, … }` append
-- Without the flag, JSON chapters are only appended (same-number folders still show)
+- A NovelCrow series URL (`https://novelcrow.com/comic/slug/`) expands to all chapters on that comic, then overlay numbers still apply (e.g. add 7–8 from HentaiRead)
 
 ```json
 {
@@ -68,7 +68,7 @@ Set `"chaptersOverlay": true` on `details.json` (or `"overlay": true` on `chapte
 | Field | Notes |
 | --- | --- |
 | `url` / `href` / `link` / `archive` / `file` | Gallery page, remote `.cbz`/`.zip`, or a path relative to the series folder |
-| `source` / `site` / `host` | Optional: `nhentai`, `hentairead`, `hentainexus`, `hentai2read`, `pandachaika`, `ehentai`, `hitomi` (aliases: `nh`, `hr`, `hn`, `h2r`, `chaika`, `eh`, `exhentai`). `zip`/`cbz` forces archive handling |
+| `source` / `site` / `host` | Optional: `nhentai`, `hentairead`, `hentainexus`, `hentai2read`, `pandachaika`, `ehentai`, `hitomi`, `novelcrow` (aliases: `nh`, `hr`, `hn`, `h2r`, `chaika`, `eh`, `exhentai`, `nc`). `zip`/`cbz` forces archive handling |
 | `id` | Gallery/slug id if you skip the URL (`id` + `source`) |
 | `title` / `number` / `date` / `scanlator` | Optional display fields. With overlay, `number` is the replace/append key |
 | `chaptersOverlay` / `overlay` | On the file root (not per chapter). `true` = replace matching numbers, append the rest |
@@ -83,6 +83,8 @@ Set `"chaptersOverlay": true` on `details.json` (or `"overlay": true` on `chapte
 - `https://panda.chaika.moe/archive/<id>`
 - `https://e-hentai.org/g/<id>/<token>/` (also `exhentai.org`)
 - `https://hitomi.la/galleries/<id>.html`
+- `https://novelcrow.com/comic/<slug>/` (series — expands to all chapters)
+- `https://novelcrow.com/comic/<slug>/<chapter>/` (single chapter)
 
 ### Archives and folders
 

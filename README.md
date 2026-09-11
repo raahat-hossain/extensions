@@ -4,7 +4,7 @@ Mihon / TachiManga / Tachiyomi extension. Reads a Cloudflare R2 bucket.
 
 Package: `eu.kanade.tachiyomi.extension.all.r2merge` (in-place update of R2 Merge — credentials persist).
 
-Lib **1.4**, `1.4.8`. NSFW.
+Lib **1.4**, `1.4.9`. NSFW.
 
 ## Bucket layout
 
@@ -49,7 +49,7 @@ R2 Library on Suwatte is **2.0**. Update the list in-app after adding. Library b
 
 Bucket zip/folder chapters are picked up automatically. With `"chaptersOverlay": true`, a JSON chapter whose `number` matches an existing folder/cbz **replaces** it (swap chapter 4); new numbers **append** (6, 7 after 5). Omit the flag to keep the old append-only merge. Gallery URLs can live in `details.json` → `chapters` (preferred) or a separate `chapters.json`.
 
-Gallery hosts: nhentai, HentaiRead, HentaiNexus, Hentai2Read, PandaChaika, E-Hentai / ExHentai, Hitomi.
+Gallery hosts: nhentai, HentaiRead, HentaiNexus, Hentai2Read, PandaChaika, E-Hentai / ExHentai, Hitomi. A NovelCrow `https://novelcrow.com/comic/slug/` series URL in `chapters[]` expands to every chapter on that comic (Cloudflare may need a one-time solve), then numbered overlay entries still replace/append.
 
 `details.json` `"cover"`: `https://…`, `"Chapter 1_1"` (chapter + 1-based page), `"chapter 4_24.png"`, or a relative image.
 
@@ -65,7 +65,7 @@ TachiManga wants **index.pb**:
 https://github.com/raahat-hossain/extensions/raw/cursor/r2-merge-extension-8f4a/repo/index.pb
 ```
 
-Sideload: [`repo/apk/tachiyomi-all.r2merge-v1.4.8.apk`](repo/apk/tachiyomi-all.r2merge-v1.4.8.apk)
+Sideload: [`repo/apk/tachiyomi-all.r2merge-v1.4.9.apk`](repo/apk/tachiyomi-all.r2merge-v1.4.9.apk)
 
 Settings: Account ID, Access Key, Secret, Bucket. Root Prefix empty if titles sit at bucket root. Optional public image URL (r2.dev / custom domain).
 

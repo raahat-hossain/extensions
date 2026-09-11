@@ -8,6 +8,7 @@ internal enum class SiteId {
     PandaChaika,
     EHentai,
     Hitomi,
+    NovelCrow,
     ;
 
     fun label(): String = when (this) {
@@ -18,6 +19,7 @@ internal enum class SiteId {
         PandaChaika -> "pandachaika"
         EHentai -> "ehentai"
         Hitomi -> "hitomi"
+        NovelCrow -> "novelcrow"
     }
 }
 
@@ -45,6 +47,7 @@ internal fun normalizeSite(value: String?): SiteId? {
         -> SiteId.PandaChaika
         "ehentai", "e-hentai", "eh", "exhentai", "ex", "e-hentai.org", "exhentai.org" -> SiteId.EHentai
         "hitomi", "hitomi.la" -> SiteId.Hitomi
+        "novelcrow", "nc", "novel-crow", "novelcrow.com" -> SiteId.NovelCrow
         else -> null
     }
 }
@@ -63,6 +66,7 @@ internal fun siteFromHost(host: String): SiteId? {
             h.endsWith(".e-hentai.org") || h.endsWith(".exhentai.org") -> SiteId.EHentai
         h == "hitomi.la" || h.endsWith(".hitomi.la") ||
             h == HITOMI_CDN || h.endsWith(".$HITOMI_CDN") -> SiteId.Hitomi
+        h == "novelcrow.com" || h.endsWith(".novelcrow.com") -> SiteId.NovelCrow
         else -> null
     }
 }
@@ -91,7 +95,7 @@ internal fun identifySite(url: String, explicit: String? = null): SiteId {
     throw Exception(
         "Unknown chapter host \"${hostOf(url).ifBlank { url }}\". " +
             "Set source to nhentai, hentairead, hentainexus, hentai2read, " +
-            "pandachaika, ehentai, or hitomi — or use a .cbz/.zip / folder chapter.",
+            "pandachaika, ehentai, hitomi, or novelcrow — or use a .cbz/.zip / folder chapter.",
     )
 }
 
@@ -146,6 +150,12 @@ internal fun extractRemoteId(site: SiteId, url: String): String {
                     ?.groupValues?.get(1)
                 ?: Regex("""\b(\d{3,})\b""").find(trimmed)?.groupValues?.get(1)
                 ?: throw Exception("Could not parse hitomi id from $trimmed")
+        SiteId.NovelCrow -> {
+            val path = trimmed.replace(Regex("""[?#].*$"""), "").trimEnd('/')
+                .replace(Regex("""^https?://[^/]+""", RegexOption.IGNORE_CASE), "")
+                .trim('/')
+            path.ifBlank { throw Exception("Could not parse novelcrow path from $trimmed") }
+        }
     }
 }
 
@@ -157,6 +167,7 @@ internal fun canonicalUrl(site: SiteId, remoteId: String): String = when (site) 
     SiteId.PandaChaika -> "$CHAIKA_BASE/archive/$remoteId"
     SiteId.EHentai -> ehentaiGalleryUrl(remoteId, EHENTAI_BASE)
     SiteId.Hitomi -> "$HITOMI_BASE/galleries/$remoteId.html"
+    SiteId.NovelCrow -> "$NOVELCROW_BASE/${remoteId.trimStart('/')}/"
 }
 
 internal fun refererForImage(url: String): String? = when (siteFromHost(hostOf(url))) {
@@ -170,6 +181,7 @@ internal fun refererForImage(url: String): String? = when (siteFromHost(hostOf(u
         if (host.contains("exhentai")) "$EXHENTAI_BASE/" else "$EHENTAI_BASE/"
     }
     SiteId.Hitomi -> "$HITOMI_BASE/"
+    SiteId.NovelCrow -> "$NOVELCROW_BASE/"
     null -> null
 }
 
@@ -198,6 +210,10 @@ internal fun pageListUrl(site: SiteId, remoteId: String, originalUrl: String): S
         ehentaiGalleryUrl(remoteId, origin)
     }
     SiteId.Hitomi -> "$HITOMI_LTN/galleries/$remoteId.js"
+    SiteId.NovelCrow -> {
+        val path = originalUrl.trim().substringBefore('?').trimEnd('/')
+        if (path.isNotEmpty()) "$path/" else "$NOVELCROW_BASE/${remoteId.trimStart('/')}/"
+    }
 }
 
 internal fun siteReferer(site: SiteId): String = when (site) {
@@ -208,6 +224,7 @@ internal fun siteReferer(site: SiteId): String = when (site) {
     SiteId.PandaChaika -> "$CHAIKA_BASE/"
     SiteId.EHentai -> "$EHENTAI_BASE/"
     SiteId.Hitomi -> "$HITOMI_BASE/"
+    SiteId.NovelCrow -> "$NOVELCROW_BASE/"
 }
 
 internal fun ehentaiGalleryUrl(remoteId: String, origin: String): String {

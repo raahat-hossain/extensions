@@ -13,7 +13,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
-internal class ParsedChapter(
+internal data class ParsedChapter(
     val title: String,
     val number: Float,
     val url: String,
@@ -21,6 +21,7 @@ internal class ParsedChapter(
     val dateUpload: Long = 0L,
     /** JSON `number` or a `Chapter N` title — safe to replace a folder/cbz with this number. */
     val explicitNumber: Boolean = false,
+    val pageRange: PageRange? = null,
 )
 
 internal class JsonChapterListing(
@@ -38,18 +39,29 @@ internal fun mergeChapterLists(
     overlay: List<ParsedChapter>,
 ): List<ParsedChapter> {
     val merged = base.toMutableList()
-    val seen = merged.map { it.url }.toMutableSet()
+    val seen = merged.map { it.readerUrl() }.toMutableSet()
     for (chapter in overlay) {
         val replace = chapter.explicitNumber && chapter.number > 0f
         if (replace) {
             val targets = merged.indices.filter { merged[it].number == chapter.number }
             if (targets.isNotEmpty()) {
                 val keep = targets.first()
+                val incoming = if (chapter.url.isBlank()) {
+                    val baseChapter = merged[keep]
+                    baseChapter.copy(
+                        title = chapter.title.ifBlank { baseChapter.title },
+                        scanlator = chapter.scanlator ?: baseChapter.scanlator,
+                        pageRange = chapter.pageRange ?: baseChapter.pageRange,
+                        explicitNumber = true,
+                    )
+                } else {
+                    chapter
+                }
                 for (index in targets.asReversed()) {
-                    seen.remove(merged[index].url)
+                    seen.remove(merged[index].readerUrl())
                     if (index == keep) {
-                        merged[index] = chapter
-                        seen += chapter.url
+                        merged[index] = incoming
+                        seen += incoming.readerUrl()
                     } else {
                         merged.removeAt(index)
                     }
@@ -57,9 +69,11 @@ internal fun mergeChapterLists(
                 continue
             }
         }
-        if (chapter.url in seen) continue
+        if (chapter.url.isBlank()) continue
+        val key = chapter.readerUrl()
+        if (key in seen) continue
         merged += chapter
-        seen += chapter.url
+        seen += key
     }
     return merged
 }
@@ -100,6 +114,7 @@ internal fun parseChaptersJson(
         val pages = (obj?.get("pages") as? JsonArray)?.mapNotNull {
             (it as? JsonPrimitive)?.contentOrNull
         }?.filter { it.isNotBlank() }
+        val pageRange = pageRangeFromJson(obj)
         val source = listOf("source", "site", "host").firstNotNullOfOrNull {
             (obj?.get(it) as? JsonPrimitive)?.contentOrNull
         }
@@ -107,6 +122,7 @@ internal fun parseChaptersJson(
         val title = listOf("title", "name").firstNotNullOfOrNull {
             (obj?.get(it) as? JsonPrimitive)?.contentOrNull
         }?.trim().orEmpty()
+        val jsonNumber = (obj?.get("number") as? JsonPrimitive)?.contentOrNull?.toFloatOrNull()
 
         val chapterUrl: String
         val displayFallback: String
@@ -145,12 +161,16 @@ internal fun parseChaptersJson(
                         .ifBlank { "Chapter ${index + 1}" }
                     siteLabel = source
                 }
+                pageRange != null && (jsonNumber != null || overlayChapterNumber(title) != null) -> {
+                    chapterUrl = ""
+                    displayFallback = ""
+                    siteLabel = source
+                }
                 else -> return@mapIndexedNotNull null
             }
         }
 
         val display = title.ifBlank { displayFallback }
-        val jsonNumber = (obj?.get("number") as? JsonPrimitive)?.contentOrNull?.toFloatOrNull()
         val titleNumber = overlayChapterNumber(display)
         val explicitNumber = jsonNumber != null || titleNumber != null
         val number = jsonNumber
@@ -171,6 +191,7 @@ internal fun parseChaptersJson(
             scanlator = scanlator,
             dateUpload = date,
             explicitNumber = explicitNumber,
+            pageRange = pageRange,
         )
     }
 }

@@ -31,7 +31,8 @@ Set `"chaptersOverlay": true` on `details.json` (or `"overlay": true` on `chapte
     {
       "title": "Chapter 4",
       "number": 4,
-      "url": "https://nhentai.net/g/289857/"
+      "url": "https://nhentai.net/g/289857/",
+      "pageRange": "3-50"
     },
     {
       "title": "Chapter 6",
@@ -73,6 +74,7 @@ Set `"chaptersOverlay": true` on `details.json` (or `"overlay": true` on `chapte
 | `title` / `number` / `date` / `scanlator` | Optional display fields. With overlay, `number` is the replace/append key |
 | `chaptersOverlay` / `overlay` | On the file root (not per chapter). `true` = replace matching numbers, append the rest |
 | `pages` | Raw image URLs — skips site/archive parsing |
+| `pageRange` | Crop the reader. `"50"` = first 50, `"3-50"` = pages 3–50, `"3-"` = 3 through the end. Also `pageStart`/`pageEnd`. Overlay `{ "number": 4, "pageRange": "1-50" }` slices a folder/cbz already numbered 4 |
 
 ### Gallery hosts
 

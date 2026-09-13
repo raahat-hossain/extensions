@@ -140,6 +140,23 @@
     }
     .check-row span { color: var(--text); font-size: 0.92rem; }
     .chapter .grow { flex: 1; }
+    .chapter-meta {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .chapter-meta .ch-title {
+      width: auto;
+      min-width: 0;
+      flex: 1;
+    }
+    .ch-pages {
+      width: 92px;
+      flex: none;
+      text-align: center;
+      padding: 10px 8px;
+      font-variant-numeric: tabular-nums;
+    }
     .icon-btn {
       width: 36px;
       height: 36px;
@@ -278,6 +295,7 @@
       </div>
     </div>
     <p class="hint">Folder/cbz chapters already in the series stay. Same <code>number</code> replaces that chapter. Higher numbers append. A NovelCrow <code>/comic/slug/</code> or MangaDex <code>/title/{uuid}/</code> series URL expands to every chapter on that title, then 7/8 overlays still apply.</p>
+    <p class="hint"><code>Pages</code>: <code>50</code> = first 50, <code>3-50</code> = only those pages, <code>3-</code> = from 3 to the end. Number + pages with no URL slices a folder/cbz already on that number.</p>
     <div id="chapters"></div>
     <div class="add-row">
       <button class="add" type="button" id="addBtn">+ Chapter</button>
@@ -408,6 +426,7 @@
         url: item.url,
         title,
         number: numberFromTitle(item.title) || 0,
+        pageRange: "",
       };
     };
 
@@ -445,15 +464,17 @@
       url: partial.url || "",
       title: partial.title || "",
       number: asNumber(partial.number) || nextNumber(),
+      pageRange: partial.pageRange || "",
     });
 
     const withNumber = (ch) => ({
       url: ch.url || "",
       title: ch.title || "",
       number: asNumber(ch.number) || nextNumber(),
+      pageRange: ch.pageRange || "",
     });
 
-    let chapters = [{ url: "", title: "", number: 1 }];
+    let chapters = [{ url: "", title: "", number: 1, pageRange: "" }];
 
     const defaultTitle = (ch, i) => `Chapter ${chapterNumber(ch) || i + 1}`;
 
@@ -470,6 +491,7 @@
         url: first.url,
         title: String(chapters[idx].title || "").trim() || first.title,
         number: chapterNumber(chapters[idx]) || asNumber(first.number) || nextNumber(),
+        pageRange: chapters[idx].pageRange || first.pageRange || "",
       };
       let cursor = Math.max(chapterNumber(chapters[idx]), maxChapterNumber());
       items.slice(1).forEach((item, offset) => {
@@ -491,11 +513,20 @@
       status: fields.status.value,
       cover: fields.cover.value.trim(),
       overlay: overlayEl.checked,
-      chapters: chapters.map((ch, i) => ({
-        title: ch.title.trim() || defaultTitle(ch, i),
-        number: chapterNumber(ch) || i + 1,
-        url: ch.url.trim(),
-      })).filter((ch) => ch.url),
+      chapters: chapters.map((ch, i) => {
+        const url = ch.url.trim();
+        const title = ch.title.trim();
+        const pageRange = String(ch.pageRange || "").trim();
+        if (!url && !pageRange) return null;
+        const row = {
+          number: chapterNumber(ch) || i + 1,
+        };
+        if (title) row.title = title;
+        else if (url) row.title = defaultTitle(ch, i);
+        if (url) row.url = url;
+        if (pageRange) row.pageRange = pageRange;
+        return row;
+      }).filter(Boolean),
     });
 
     const buildDetails = (split = false) => {
@@ -531,7 +562,10 @@
             <button class="icon-btn" type="button" data-down="${i}" ${i === chapters.length - 1 ? "disabled" : ""}>↓</button>
             <button class="icon-btn danger" type="button" data-del="${i}">✕</button>
           </div>
-          <input class="ch-title" data-i="${i}" placeholder="${defaultTitle(ch, i)} (optional name)" value="${escapeAttr(ch.title)}" />
+          <div class="chapter-meta">
+            <input class="ch-title" data-i="${i}" placeholder="${defaultTitle(ch, i)} (optional name)" value="${escapeAttr(ch.title)}" />
+            <input class="ch-pages" data-i="${i}" placeholder="3-50" value="${escapeAttr(ch.pageRange)}" title="Pages: 50 = first 50, 3-50 = those pages" />
+          </div>
         </div>
       `).join("");
       updatePreview();
@@ -578,6 +612,7 @@
             url: ch.url || "",
             title: ch.title || "",
             number: asNumber(ch.number) || i + 1,
+            pageRange: ch.pageRange || "",
           }));
         }
       } catch { /* ignore */ }
@@ -618,13 +653,26 @@
       }).filter(Boolean).join(", ");
     };
 
+    const importedPageRange = (entry) => {
+      if (entry == null || typeof entry === "string") return "";
+      const spec = entry.pageRange || entry.pagesRange || entry.range;
+      if (spec != null && String(spec).trim()) return String(spec).trim();
+      const start = entry.pageStart || entry.fromPage || entry.from;
+      const end = entry.pageEnd || entry.toPage || entry.endPage || entry.to;
+      if (start && end) return `${start}-${end}`;
+      if (end && !start) return String(end);
+      if (start && !end) return `${start}-`;
+      return "";
+    };
+
     const importedChapter = (entry, fallbackNumber) => {
-      if (typeof entry === "string") return { url: entry, title: "", number: fallbackNumber };
+      if (typeof entry === "string") return { url: entry, title: "", number: fallbackNumber, pageRange: "" };
       const title = entry.title || entry.name || "";
       return {
         url: entry.url || entry.href || entry.link || entry.archive || "",
         title,
         number: asNumber(entry.number) || numberFromTitle(title) || fallbackNumber,
+        pageRange: importedPageRange(entry),
       };
     };
 
@@ -642,7 +690,7 @@
       if (obj.chaptersOverlay === false || obj.overlay === false) overlayEl.checked = false;
       const list = Array.isArray(obj) ? obj : (obj.chapters || obj.chapter_list);
       if (!Array.isArray(list) || !list.length) return;
-      const occupied = chapters.some((ch) => ch.url.trim() || ch.title.trim());
+      const occupied = chapters.some((ch) => ch.url.trim() || ch.title.trim() || String(ch.pageRange || "").trim());
       const incoming = list.map((entry, i) => importedChapter(entry, i + 1));
       if (!occupied) {
         chapters = incoming;
@@ -672,6 +720,7 @@
       }
       if (e.target.classList.contains("ch-title")) chapters[i].title = e.target.value;
       if (e.target.classList.contains("ch-num")) chapters[i].number = asNumber(e.target.value);
+      if (e.target.classList.contains("ch-pages")) chapters[i].pageRange = e.target.value;
       updatePreview();
       saveLocal();
     });
@@ -813,7 +862,7 @@
       Object.values(fields).forEach((el) => { el.value = el.tagName === "SELECT" ? "ongoing" : ""; });
       existingCountEl.value = "0";
       overlayEl.checked = true;
-      chapters = [{ url: "", title: "", number: 1 }];
+      chapters = [{ url: "", title: "", number: 1, pageRange: "" }];
       localStorage.removeItem(STORAGE);
       renderChapters();
     });

@@ -429,11 +429,13 @@ class R2Merge(
     }
 
     private fun expandRemoteSeries(chapters: List<ParsedChapter>): List<ParsedChapter> = chapters.flatMap { chapter ->
-        when {
+        val expanded = when {
             isNovelCrowSeriesUrl(chapter.url) -> fetchNovelCrowChapters(client, headers, chapter.url)
             isMangaDexSeriesUrl(chapter.url) -> fetchMangaDexChapters(client, headers, chapter.url, json)
             else -> listOf(chapter)
         }
+        val range = chapter.pageRange ?: return@flatMap expanded
+        expanded.map { it.copy(pageRange = it.pageRange ?: range) }
     }
 
     private fun chaptersJsonCoverPage(
@@ -444,7 +446,7 @@ class R2Merge(
     ): String? {
         val chapters = expandRemoteSeries(jsonListedChapters(config, listing, seriesPrefix).chapters)
         val chapter = findChapterByName(chapters, ref.chapter) { it.title } ?: return null
-        val pages = pagesForCover(chapter.url)
+        val pages = pagesForCover(chapter.readerUrl())
         val imageUrl = pickCoverPage(pages, ref.page, preserveOrder = true) { it.imageUrl.orEmpty() }
             ?.imageUrl
             ?: return null
@@ -457,24 +459,8 @@ class R2Merge(
     }
 
     private fun pagesForCover(url: String): List<Page> {
-        if (url.startsWith("pages:")) {
-            val raw = String(
-                Base64.decode(url.removePrefix("pages:"), Base64.URL_SAFE),
-                Charsets.UTF_8,
-            )
-            val urls = json.decodeFromString(ListSerializer(String.serializer()), raw)
-            return urls.mapIndexed { index, pageUrl -> Page(index, imageUrl = pageUrl) }
-        }
-        if (tryIdentifySite(url) != null) {
-            val chapter = SChapter.create().apply { this.url = url }
-            // Same path as fetchPageList so Cloudflare WebView/cookies apply.
-            return client.newCall(pageListRequest(chapter))
-                .asObservableSuccess()
-                .toBlocking()
-                .first()
-                .let { pageListParse(it) }
-        }
-        return localOrArchivePages(url)
+        val chapter = SChapter.create().apply { this.url = url }
+        return fetchPageList(chapter).toBlocking().first()
     }
 
     private fun firstPageUrl(config: R2Config, listing: S3Listing): String? {
@@ -562,7 +548,7 @@ class R2Merge(
         val merged = if (listed.overlay) {
             mergeChapterLists(chapters, extras)
         } else {
-            (chapters + extras).distinctBy { it.url }
+            (chapters + extras).distinctBy { it.readerUrl() }
         }
 
         if (merged.isEmpty()) {
@@ -579,7 +565,7 @@ class R2Merge(
             .sortedWith(compareBy<ParsedChapter> { it.number }.thenBy(NaturalOrder) { it.title })
             .map { chapter ->
                 SChapter.create().apply {
-                    url = chapter.url
+                    url = chapter.readerUrl()
                     name = chapter.title
                     date_upload = chapter.dateUpload
                     scanlator = chapter.scanlator
@@ -592,23 +578,25 @@ class R2Merge(
     }
 
     override fun fetchPageList(chapter: SChapter): Observable<List<Page>> {
-        val url = chapter.url
+        val (url, range) = splitPageRange(chapter.url)
+        val slice = { pages: List<Page> -> applyPageRange(pages, range) }
         if (url.startsWith("pages:")) {
             val raw = String(
                 Base64.decode(url.removePrefix("pages:"), Base64.URL_SAFE),
                 Charsets.UTF_8,
             )
             val urls = json.decodeFromString(ListSerializer(String.serializer()), raw)
-            return Observable.just(urls.mapIndexed { index, pageUrl -> Page(index, imageUrl = pageUrl) })
+            return Observable.just(slice(urls.mapIndexed { index, pageUrl -> Page(index, imageUrl = pageUrl) }))
         }
         if (tryIdentifySite(url) != null) {
-            return client.newCall(pageListRequest(chapter)).asObservableSuccess().map { pageListParse(it) }
+            val cleaned = SChapter.create().apply { this.url = url }
+            return client.newCall(pageListRequest(cleaned)).asObservableSuccess().map { slice(pageListParse(it)) }
         }
-        return Observable.fromCallable { localOrArchivePages(url) }
+        return Observable.fromCallable { slice(localOrArchivePages(url)) }
     }
 
     override fun pageListRequest(chapter: SChapter): Request {
-        val url = chapter.url
+        val url = splitPageRange(chapter.url).first
         if (url.startsWith("pages:")) {
             throw Exception("Static page chapters must be opened through fetchPageList")
         }
@@ -655,7 +643,8 @@ class R2Merge(
         }
     }
 
-    private fun localOrArchivePages(target: String): List<Page> {
+    private fun localOrArchivePages(rawTarget: String): List<Page> {
+        val target = splitPageRange(rawTarget).first
         val config = requireConfig()
         val pages = when {
             isAbsoluteUrl(target) || isBucketArchive(target) -> archivePages(target)

@@ -4,7 +4,7 @@ Mihon / TachiManga / Tachiyomi extension. Reads a Cloudflare R2 bucket.
 
 Package: `eu.kanade.tachiyomi.extension.all.r2merge` (in-place update of R2 Merge — credentials persist).
 
-Lib **1.4**, `1.4.10`. NSFW.
+Lib **1.4**, `1.4.11`. NSFW.
 
 ## Bucket layout
 
@@ -40,8 +40,8 @@ R2 Library on Suwatte is **2.0**. Update the list in-app after adding. Library b
   "cover": "Chapter 1_1",
   "chaptersOverlay": true,
   "chapters": [
-    { "title": "Chapter 4", "number": 4, "url": "https://nhentai.net/g/289857/" },
-    { "title": "Chapter 6", "number": 6, "url": "https://hitomi.la/galleries/123456.html" },
+    { "title": "Chapter 4", "number": 4, "url": "https://nhentai.net/g/289857/", "pageRange": "3-50" },
+    { "title": "Chapter 6", "number": 6, "url": "https://hitomi.la/galleries/123456.html", "pageRange": "50" },
     { "title": "Chapter 7", "number": 7, "url": "https://hentairead.com/hentai/example/" }
   ]
 }
@@ -50,6 +50,8 @@ R2 Library on Suwatte is **2.0**. Update the list in-app after adding. Library b
 Bucket zip/folder chapters are picked up automatically. With `"chaptersOverlay": true`, a JSON chapter whose `number` matches an existing folder/cbz **replaces** it (swap chapter 4); new numbers **append** (6, 7 after 5). Omit the flag to keep the old append-only merge. Gallery URLs can live in `details.json` → `chapters` (preferred) or a separate `chapters.json`.
 
 Gallery hosts: nhentai, HentaiRead, HentaiNexus, Hentai2Read, PandaChaika, E-Hentai / ExHentai, Hitomi, NovelCrow, MangaDex. A NovelCrow `https://novelcrow.com/comic/slug/` or MangaDex `https://mangadex.org/title/{uuid}/…` series URL in `chapters[]` expands to every chapter on that title (NovelCrow may need a one-time Cloudflare solve; MangaDex prefers English when the same number exists in multiple languages), then numbered overlay entries still replace/append.
+
+`"pageRange"` crops the reader: `"50"` = first 50 pages, `"3-50"` = pages 3–50, `"3-"` = page 3 through the end. Overlay-only `{ "number": 4, "pageRange": "1-50" }` slices a folder/cbz already on that number.
 
 `details.json` `"cover"`: `https://…`, `"Chapter 1_1"` (chapter + 1-based page), `"chapter 4_24.png"`, or a relative image.
 
@@ -65,7 +67,7 @@ TachiManga wants **index.pb**:
 https://github.com/raahat-hossain/extensions/raw/cursor/r2-merge-extension-8f4a/repo/index.pb
 ```
 
-Sideload: [`repo/apk/tachiyomi-all.r2merge-v1.4.10.apk`](repo/apk/tachiyomi-all.r2merge-v1.4.10.apk)
+Sideload: [`repo/apk/tachiyomi-all.r2merge-v1.4.11.apk`](repo/apk/tachiyomi-all.r2merge-v1.4.11.apk)
 
 Settings: Account ID, Access Key, Secret, Bucket. Root Prefix empty if titles sit at bucket root. Optional public image URL (r2.dev / custom domain).
 
